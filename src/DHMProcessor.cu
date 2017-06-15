@@ -35,6 +35,19 @@ DHMProcessor::DHMProcessor(std::string inputDir, std::string outputDir) {
 
     // allocate buffers, setup FFT
 
+    CUDA_CHECK( cudaStreamCreate(&math_stream) );
+    CUDA_CHECK( cudaStreamCreate(&copy_stream) );
+
+    CUDA_CHECK( cufftCreate(&fft_plan) );
+    CUDA_CHECK( cufftXtMakePlanMany(fft_plan, 2, fft_dims,
+                                    NULL, 1, 0, fft_type,
+                                    NULL, 1, 0, fft_type,
+                                    1, &fft_work_size, fft_type) );
+    CUDA_CHECK( cufftSetStream(fft_plan, math_stream) );
+
+    // only one quadrant
+//    CUDA_CHECK( cudaMallocHost(&filter_stack, (N/2+1)*(N/2+1)*sizeof(complex)) );
+
     // what a fucking mess
 //        complex *image;
 //        checkCudaErrors( cudaMalloc(&image, N*N*sizeof(complex)) );
@@ -46,10 +59,6 @@ DHMProcessor::DHMProcessor(std::string inputDir, std::string outputDir) {
 //
 //        byte *image_u8;
 //        checkCudaErrors( cudaMalloc(&image_u8, N*N*sizeof(byte)) );
-//
-//        cudaStream_t math_stream, copy_stream;
-//        checkCudaErrors( cudaStreamCreate(&math_stream) );
-//        checkCudaErrors( cudaStreamCreate(&copy_stream) );
 //
 //        complex *in_buffers[2];
 //        checkCudaErrors( cudaMalloc(&in_buffers[0], NUM_SLICES*N*N*sizeof(complex)) );
@@ -66,10 +75,17 @@ DHMProcessor::DHMProcessor(std::string inputDir, std::string outputDir) {
 //        memset(host_mask, 1, NUM_SLICES);
 //        checkCudaErrors( cudaMemcpy(mask, host_mask, NUM_SLICES*sizeof(char), cudaMemcpyHostToDevice) );
 
+    // construct PSF, keep on host
+    gen_filter_quadrant(filter_stack);
+}
+
+DHMProcessor::~DHMProcessor() {
+    CUDA_CHECK( cudaFreeHost(filter_stack) );
 }
 
 void DHMProcessor::process_camera() {
     // stub
+    // async
     // also needs to save images
 }
 
@@ -79,6 +95,7 @@ void DHMProcessor::process_folder() {
     float *volume = new float[NUM_SLICES*N*N];
 //        const int vol_sizes[3] = {NUM_SLICES, N, N};
 
+    // loop thru files in input folder
     for (auto &f : boost::make_iterator_range(directory_iterator(inputDir), {}))
     {
         std::string path = f.path().string();
@@ -102,6 +119,15 @@ void DHMProcessor::process_folder() {
 void DHMProcessor::process_frame(byte *frame, float *volume) {
     // fun part goes here
     // this would be a callback
+
+    load_image(frame, image);
+    fft_image(image);
+    apply_filter(stack, image, slice_mask);
+    ifft_stack(stack);
+    stack_modulus(stack, volume)
+    process_volume(volume, volume_callback)
+    save_volume(volume)
+    wait_for_stack(stack)
 }
 
 //}

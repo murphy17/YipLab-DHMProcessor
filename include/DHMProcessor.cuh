@@ -12,7 +12,7 @@
 class DHMProcessor
 {
 public:
-    void gen_psf_quadrant(complex *psf);
+    void gen_filter_quadrant(complex *psf);
     void fft_image(const byte *image, complex *image_f);
     void apply_filter(complex *stack, const complex *image, const byte *mask);
 
@@ -34,13 +34,17 @@ public:
 
     // CUDA stuff
 
+    complex *filter_stack; // host
+
     cufftHandle fft_plan;
+    const cudaDataType fft_type = CUDA_C_32F;
     const long long fft_dims[2] = {N, N};
     size_t fft_work_size = 0;
 
     cudaStream_t math_stream, copy_stream;
 
     DHMProcessor(std::string inputDir, std::string outputDir);
+    ~DHMProcessor();
 
     void process_camera();
     void process_folder();

@@ -71,7 +71,7 @@ void _freq_shift(complex *data)
 
 namespace ops {
 
-__global__ void _gen_psf_slice(
+__global__ void _gen_filter_slice(
     complex *g,
     const float z,
     const DHMParameters p
@@ -98,13 +98,13 @@ __global__ void _gen_psf_slice(
 
 }
 
-void DHMProcessor::gen_psf_quadrant(complex *psf) {
+void DHMProcessor::gen_filter_quadrant(complex *psf) {
     complex *slice;
     CUDA_CHECK( cudaMalloc(&slice, N*N*sizeof(complex)) );
 
     for (int i = 0; i < NUM_SLICES; i++)
     {
-        ops::_gen_psf_slice<<<N, N, 0, math_stream>>>(slice, Z0 + i * DZ, p);
+        ops::_gen_filter_slice<<<N, N, 0, math_stream>>>(slice, Z0 + i * DZ, p);
         KERNEL_CHECK();
 
         // FFT in-place
@@ -115,7 +115,7 @@ void DHMProcessor::gen_psf_quadrant(complex *psf) {
         ops::_freq_shift<<<N, N, 0>>>(slice);
         KERNEL_CHECK();
 
-        // copy single quadrant
+        // copy single quadrant to host
         CUDA_CHECK( cudaMemcpy2D(
             psf + (N/2+1)*(N/2+1)*i,
             (N/2+1)*sizeof(complex),
