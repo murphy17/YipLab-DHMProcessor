@@ -12,6 +12,8 @@
 #include <sstream>
 #include <exception>
 #include <ctime>
+#include <algorithm>
+#include <vector>
 
 #include "cufftXt.h"
 
@@ -68,7 +70,6 @@ inline void _check_kernel(const int line, const char *file) {
 ////////////////////////////////////////////////////////////////////////////////
 
 typedef float2 complex;
-typedef float real;
 typedef unsigned char byte;
 
 ////////////////////////////////////////////////////////////////////////////////

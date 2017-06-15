@@ -5,7 +5,7 @@
  *      Author: michaelmurphy
  */
 
-#include "DHMCommon.cuh"
+#include "ops.cuh"
 #include "DHMProcessor.cuh"
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -46,8 +46,8 @@ void _b2c(const __restrict__ byte *b, complex *z)
     const int j = threadIdx.x;
     const int N = blockDim.x; // blockDim shall equal N
 
-    z[i*N+j].x = (real)(((float)(b[i*N+j])) / 255.f);
-    z[i*N+j].y = (real)0.f;
+    z[i*N+j].x = ((float)(b[i*N+j])) / 255.f;
+    z[i*N+j].y = 0.f;
 }
 
 __global__
@@ -57,14 +57,14 @@ void _freq_shift(complex *data)
     const int j = threadIdx.x;
     const int N = blockDim.x;
 
-    const real a = (real)(1 - 2 * ((i+j) & 1));
+    const float a = (float)(1 - 2 * ((i+j) & 1));
 
     data[i*N+j].x *= a;
     data[i*N+j].y *= a;
 }
 
 __global__
-void _modulus(const __restrict__ complex *z, real *r)
+void _modulus(const __restrict__ complex *z, float *r)
 {
     const int offset = blockIdx.x * blockDim.x + threadIdx.x;
     r[offset] = hypotf(z[offset].x, z[offset].y);
@@ -103,29 +103,29 @@ __global__ void _gen_filter_slice(
     g[i*p.N+j] = {-im / r, re / r};
 }
 
-cudaError_t transfer_stack(const complex *host_stack, complex *dev_stack, const DHMParameters p, const cudaStream_t stream)
+}
+
+void DHMProcessor::transfer_filter_async(complex *h_filter, complex *d_filter)
 {
     // generate parameters for 3D copy
     cudaMemcpy3DParms q = { 0 };
-    q.srcPtr.ptr = host_stack;
-    q.srcPtr.pitch = (p.N/2+1) * sizeof(complex);
-    q.srcPtr.xsize = (p.N/2+1);
-    q.srcPtr.ysize = (p.N/2+1);
-    q.dstPtr.ptr = dev_stack;
-    q.dstPtr.pitch = p.N * sizeof(complex);
-    q.dstPtr.xsize = p.N;
-    q.dstPtr.ysize = p.N;
-    q.extent.width = (p.N/2+1) * sizeof(complex);
-    q.extent.height = (p.N/2+1);
-    q.extent.depth = p.NUM_SLICES;
+    q.srcPtr.ptr = h_filter;
+    q.srcPtr.pitch = (N/2+1) * sizeof(complex);
+    q.srcPtr.xsize = (N/2+1);
+    q.srcPtr.ysize = (N/2+1);
+    q.dstPtr.ptr = d_filter;
+    q.dstPtr.pitch = N * sizeof(complex);
+    q.dstPtr.xsize = N;
+    q.dstPtr.ysize = N;
+    q.extent.width = (N/2+1) * sizeof(complex);
+    q.extent.height = (N/2+1);
+    q.extent.depth = NUM_SLICES;
     q.kind = cudaMemcpyHostToDevice;
 
-    return cudaMemcpy3DAsync(&q, stream);
+    CUDA_CHECK( cudaMemcpy3DAsync(&q, copy_stream) );
 }
 
-}
-
-void DHMProcessor::gen_filter_quadrant(complex *psf) {
+void DHMProcessor::gen_filter_quadrant(complex *h_filter) {
     complex *slice;
     CUDA_CHECK( cudaMalloc(&slice, N*N*sizeof(complex)) );
 
@@ -144,9 +144,9 @@ void DHMProcessor::gen_filter_quadrant(complex *psf) {
 
         // copy single quadrant to host
         CUDA_CHECK( cudaMemcpy2D(
-            psf + (N/2+1)*(N/2+1)*i,
+            h_filter + (N/2+1)*(N/2+1)*i,
             (N/2+1)*sizeof(complex),
-            psf,
+            slice,
             N*sizeof(complex),
             (N/2+1)*sizeof(complex),
             N/2+1,
