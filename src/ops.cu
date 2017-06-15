@@ -63,6 +63,13 @@ void _freq_shift(complex *data)
     data[i*N+j].y *= a;
 }
 
+__global__
+void _modulus(const __restrict__ complex *z, real *r)
+{
+    const int offset = blockIdx.x * blockDim.x + threadIdx.x;
+    r[offset] = hypotf(z[offset].x, z[offset].y);
+}
+
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -94,6 +101,26 @@ __global__ void _gen_filter_slice(
 
     // re(iz) = -im(z), im(iz) = re(z)
     g[i*p.N+j] = {-im / r, re / r};
+}
+
+cudaError_t transfer_stack(const complex *host_stack, complex *dev_stack, const DHMParameters p, const cudaStream_t stream)
+{
+    // generate parameters for 3D copy
+    cudaMemcpy3DParms q = { 0 };
+    q.srcPtr.ptr = host_stack;
+    q.srcPtr.pitch = (p.N/2+1) * sizeof(complex);
+    q.srcPtr.xsize = (p.N/2+1);
+    q.srcPtr.ysize = (p.N/2+1);
+    q.dstPtr.ptr = dev_stack;
+    q.dstPtr.pitch = p.N * sizeof(complex);
+    q.dstPtr.xsize = p.N;
+    q.dstPtr.ysize = p.N;
+    q.extent.width = (p.N/2+1) * sizeof(complex);
+    q.extent.height = (p.N/2+1);
+    q.extent.depth = p.NUM_SLICES;
+    q.kind = cudaMemcpyHostToDevice;
+
+    return cudaMemcpy3DAsync(&q, stream);
 }
 
 }
@@ -219,42 +246,3 @@ void _quad_mul(
 
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// Frame processing pipeline stages
-///////////////////////////////////////////////////////////////////////////////
-
-void DHMProcessor::fft_image(const byte *image, complex *image_f)
-{
-    ops::_b2c<<<N, N>>>(image, image_f);
-    KERNEL_CHECK();
-
-    CUDA_CHECK( cufftXtExec(fft_plan, image_f, image_f, CUFFT_FORWARD) );
-}
-
-void DHMProcessor::apply_filter(complex *stack, const complex *image, const byte *mask)
-{
-    ops::_quad_mul<<<N/2+1, N/2+1>>>(stack, image, mask, p);
-    KERNEL_CHECK();
-}
-
-//void deconvolve_filter(
-//    complex *stack,
-//    real *output,
-//    byte *mask,
-//    DHMParameters params
-//) {
-//    // inverse FFT the product - batch FFT gave no speedup
-//    for (int i = 0; i < NUM_SLICES; i++)
-//    {
-//        complex *slice = stack + N*N*sizeof(complex);
-//
-//        if (mask[slice])
-//        {
-//            checkCudaErrors( cufftXtExec(params.fft_plan,
-//                                         slice + N*N*slice,
-//                                         slice + N*N*slice,
-//                                         CUFFT_INVERSE) );
-//
-//            modulus<<<N, N, 0, math_stream>>>(in_buffer + N*N*slice, out_buffer + N*N*slice);
-//    }
-//}

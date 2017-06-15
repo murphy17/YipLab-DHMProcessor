@@ -33,7 +33,7 @@ DHMProcessor::DHMProcessor(std::string inputDir, std::string outputDir) {
     // pack parameters
     p = { N, NUM_SLICES, NUM_FRAMES, DX, DY, DZ, Z0, LAMBDA0 };
 
-    // allocate buffers, setup FFT
+    // allocate buffers, setup FFTs
 
     CUDA_CHECK( cudaStreamCreate(&math_stream) );
     CUDA_CHECK( cudaStreamCreate(&copy_stream) );
@@ -85,6 +85,25 @@ DHMProcessor::~DHMProcessor() {
 
 void DHMProcessor::process_camera() {
     // stub
+
+    const int codec = CV_FOURCC('F','F','V','1');
+    const int fps = 1;
+
+    const std::time_t now = std::time(0);
+    const std::tm ltm = std::localtime(&now)
+
+    std::string path = outputDir + "/" +
+                       std::to_string(1900 + ltm->tm_year) + "_" +
+                       std::to_string(1 + ltm->tm_mon) + "_" +
+                       std::to_string(ltm->tm_mday) + "_" +
+                       std::to_string(1 + ltm->tm_hour) + "_" +
+                       std::to_string(1 + ltm->tm_min) + "_" +
+                       std::to_string(1 + ltm->tm_sec) +
+                       ".mpg";
+
+    const int size[2] = {N, N};
+    writer.open(path, codec, fps, size, false);
+    if (!writer.isOpened()) throw DHMException("Cannot open output video", __LINE__, __FILE__);
     // async
     // also needs to save images
 }
@@ -116,18 +135,41 @@ void DHMProcessor::process_folder() {
     }
 }
 
-void DHMProcessor::process_frame(byte *frame, float *volume) {
+void DHMProcessor::process_frame(byte *frame, float *volume, bool camera) {
     // fun part goes here
     // this would be a callback
 
-    load_image(frame, image);
-    fft_image(image);
-    apply_filter(stack, image, slice_mask);
-    ifft_stack(stack);
-    stack_modulus(stack, volume)
-    process_volume(volume, volume_callback)
-    save_volume(volume)
-    wait_for_stack(stack)
+    // if recording images live, save the raw video feed too
+    if (camera)
+    {
+        // this could happen in another thread, don't think it'll take that long though
+        cv::Mat frame_mat(N, N, CV_8U, frame);
+        writer.write(frame_mat);
+    }
+
+    // convert 8-bit image to real channel of complex float
+    ops::_b2c<<<N, N, 0, math_stream>>>(frame, image);
+    KERNEL_CHECK();
+
+    // FFT image in-place
+    CUDA_CHECK( cufftXtExec(fft_plan, image, image, CUFFT_FORWARD) );
+
+    // multiply image with stored quadrant of filter stack
+    ops::_quad_mul<<<N/2+1, N/2+1, 0, math_stream>>>(stack, image, mask, p);
+    KERNEL_CHECK();
+
+    // inverse FFT the product, and take complex magnitude
+    for (int i = 0; i < NUM_SLICES; i++)
+    {
+        if (mask[i])
+        {
+            CUDA_CHECK( cufftXtExec(fft_plan, stack + i*N*N, stack + i*N*N, CUFFT_INVERSE) );
+
+            ops::modulus<<<N, N, 0, math_stream>>>(stack + i*N*N, volume + i*N*N);
+            KERNEL_CHECK();
+        }
+    }
+
 }
 
 //}

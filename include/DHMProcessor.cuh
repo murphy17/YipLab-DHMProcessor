@@ -13,8 +13,12 @@ class DHMProcessor
 {
 public:
     void gen_filter_quadrant(complex *psf);
-    void fft_image(const byte *image, complex *image_f);
+    void save_image(const byte *frame);
+    void convert_image(const byte *frame, complex *image);
+    void fft_image(complex *image_f);
     void apply_filter(complex *stack, const complex *image, const byte *mask);
+    void ifft_stack(complex *stack, const byte *mask);
+    void mod_stack(const complex *stack, real *volume, const byte *mask)
 
     // experimental parameters
 
@@ -32,7 +36,12 @@ public:
 
     DHMParameters p;
 
+    cv::VideoWriter writer;
+
     // CUDA stuff
+
+    const int num_buffers = 2;
+    int buffer_pos = 0;
 
     complex *filter_stack; // host
 
@@ -49,6 +58,8 @@ public:
     void process_camera();
     void process_folder();
 
-    void process_frame(byte *frame, float *volume);
+    void process_frame(byte *frame, float *volume, bool camera);
+
+    void save_frame(byte *frame);
 };
 

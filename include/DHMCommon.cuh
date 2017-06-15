@@ -11,6 +11,7 @@
 #include <string>
 #include <sstream>
 #include <exception>
+#include <ctime>
 
 #include "cufftXt.h"
 
