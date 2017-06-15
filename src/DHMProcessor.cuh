@@ -71,6 +71,8 @@ private:
 
     cudaStream_t math_stream, copy_stream;
 
+    void (*callback)(float *, byte *, void *) = nullptr;
+
 public:
     DHMProcessor(std::string);
     ~DHMProcessor();

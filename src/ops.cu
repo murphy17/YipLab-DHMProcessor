@@ -139,7 +139,7 @@ void DHMProcessor::gen_filter_quadrant(complex *h_filter) {
         CUDA_CHECK( cudaStreamSynchronize(math_stream) );
 
         // frequency shift -- eliminates need to copy later
-        ops::_freq_shift<<<N, N, 0>>>(slice);
+        ops::_freq_shift<<<N, N, 0, math_stream>>>(slice);
         KERNEL_CHECK();
 
         // copy single quadrant to host
