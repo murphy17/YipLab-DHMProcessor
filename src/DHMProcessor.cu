@@ -60,6 +60,9 @@ DHMProcessor::DHMProcessor(std::string outputDir) {
     buffer_pos = 0;
     transfer_filter_async(h_filter, d_filter[buffer_pos]);
     CUDA_CHECK( cudaStreamSynchronize(copy_stream) );
+    // initially query all slices
+    memset(h_mask, 1, NUM_SLICES);
+    CUDA_CHECK( cudaMemcpy(d_mask, h_mask, NUM_SLICES*sizeof(byte), cudaMemcpyHostToDevice) );
 }
 
 DHMProcessor::~DHMProcessor() {
