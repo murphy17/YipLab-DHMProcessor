@@ -53,7 +53,7 @@ DHMProcessor::DHMProcessor(std::string outputDir) {
     CUDA_CHECK( cudaMallocHost(&h_mask, NUM_SLICES*sizeof(byte)) );
     CUDA_CHECK( cudaMalloc(&d_mask, NUM_SLICES*sizeof(byte)) );
 
-    // construct PSF, keep on host
+    // construct filter stack, keep on host
     gen_filter_quadrant(h_filter);
 
     // copy to GPU in preparation for first frame
@@ -141,8 +141,6 @@ void DHMProcessor::process_folder(std::string input_dir) {
 
         h_frame = frame_mat.data;
 
-        display_image(h_frame);
-
         process_frame(h_frame, h_volume, false, false); // callback!!!
 
         display_volume(h_volume);
@@ -211,7 +209,7 @@ void DHMProcessor::process_frame(byte *h_frame, float *h_volume, bool use_camera
 void DHMProcessor::display_image(byte *h_image)
 {
     cv::Mat mat(N, N, CV_8U, h_image);
-    cv::imshow("Display window", mat); // Show our image inside it.
+    cv::imshow("Display window", mat);
     cv::waitKey(0);
 }
 
@@ -221,7 +219,7 @@ void DHMProcessor::display_volume(float *h_volume)
     {
         cv::Mat mat(N, N, CV_32F, h_volume + i*N*N);
         cv::normalize(mat, mat, 1.0, 0.0, cv::NORM_MINMAX, -1);
-        cv::imshow("Display window", mat); // Show our image inside it.
+        cv::imshow("Display window", mat);
         cv::waitKey(0);
     }
 }

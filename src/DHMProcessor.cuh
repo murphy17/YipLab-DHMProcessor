@@ -36,6 +36,7 @@ private:
 //    std::string inputDir;
     std::string outputDir;
 
+    // TODO: take some of these from constructor
     const int N = 1024;
     const int NUM_SLICES = 100;
     const int NUM_FRAMES = 10;
@@ -79,6 +80,9 @@ public:
 
     void process_frame(byte *, float *, bool, bool);
 
-    void save_frame(byte *);
+//    void save_frame(byte *);
+
+    // should this be in constructor?
+    void set_callback(void (*)(float *, byte *, void *));
 };
 

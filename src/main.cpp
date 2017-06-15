@@ -12,15 +12,17 @@
 
 int main()
 {
-    try {
+    try
+    {
         DHMProcessor dhm("../test/output");
 
         // dhm.set_callback()
 
         dhm.process_folder("../test/input");
-
-    } catch (DHMException &e) {
-        std::cerr << e.what() << std::endl;
+    }
+    catch (DHMException &e)
+    {
+        std::cerr << e.what() << std::endl; // this yields gibberish
     }
 }
 
