@@ -250,72 +250,163 @@ void _quad_mul(
 // Convert 3D volume to sparse (COO) format
 ///////////////////////////////////////////////////////////////////////////////
 
-typedef thrust::counting_iterator<int> IndexIterator;
-typedef thrust::device_vector<float>::iterator FloatIterator;
-typedef thrust::tuple<IndexIterator, FloatIterator> IteratorTuple;
-typedef thrust::zip_iterator<IteratorTuple> ZipIterator;
+//typedef thrust::counting_iterator<int> IndexIterator;
+//typedef thrust::device_vector<float>::iterator FloatIterator;
+//typedef thrust::tuple<IndexIterator, FloatIterator> IteratorTuple;
+//typedef thrust::zip_iterator<IteratorTuple> ZipIterator;
+
+//namespace ops {
+//
+//struct _gen_coo_tuple : public thrust::unary_function<thrust::tuple<int, float>,float> {
+//    int N;
+//    __host__ __device__
+//    _gen_coo_tuple(int n)
+//    {
+//        N = n;
+//    }
+//    __host__ __device__
+//    COOTuple operator()(const thrust::tuple<int, float> &t)
+//    {
+//        int ii = thrust::get<0>(t);
+//        int iz = ii / (N*N);
+//        int iy = (ii - iz*N*N) / N;
+//        int ix = ii - iz*N*N - iy*N;
+//        float v = thrust::get<1>(t);
+//        COOTuple c = {ix, iy, iz, v};
+//        return c;
+//    }
+//};
+//
+//struct _filter_zeros {
+//    float ZERO_THR;
+//    __host__ __device__
+//    _filter_zeros(float thr)
+//    {
+//        ZERO_THR = thr;
+//    }
+//    bool operator()(const thrust::tuple<int, float> t)
+//    {
+//        float v = thrust::get<1>(t);
+//        return (v > ZERO_THR);
+//    }
+//};
 
 namespace ops {
 
-struct _gen_coo_tuple : public thrust::unary_function<thrust::tuple<int, float>,float> {
-    int N;
-    __host__ __device__
-    _gen_coo_tuple(int n)
-    {
-        N = n;
-    }
-    __host__ __device__
-    COOTuple operator()(const thrust::tuple<int, float> &t)
-    {
-        int ii = thrust::get<0>(t);
-        int iz = ii / (N*N);
-        int iy = (ii - iz*N*N) / N;
-        int ix = ii - iz*N*N - iy*N;
-        float v = thrust::get<1>(t);
-        COOTuple c = {ix, iy, iz, v};
-        return c;
-    }
-};
+// compact rows
+__global__
+void _compact_rows(const float *slice, int *x, float *v, int *s, const DHMParameters p)
+{
+    extern __shared__ int shared_mem[];
+    int *xs = shared_mem;
+    float *vs = ((float *)shared_mem) + p.N;
+    unsigned int *ss = ((unsigned int *)shared_mem) + 2*p.N;
 
-struct _filter_zeros {
-    float ZERO_THR;
-    __host__ __device__
-    _filter_zeros(float thr)
+    const float *row = slice + blockIdx.x * blockDim.x;
+
+    float val = row[threadIdx.x];
+
+    if (val > 0)
     {
-        ZERO_THR = thr;
+        int idx = atomicInc(ss, 1);
+        xs[idx] = threadIdx.x;
+        vs[idx] = val;
     }
-    bool operator()(const thrust::tuple<int, float> t)
+
+    __syncthreads();
+
+    if (threadIdx.x < *ss)
     {
-        float v = thrust::get<1>(t);
-        return (v > ZERO_THR);
+        int offset = blockIdx.x * blockDim.x + threadIdx.x;
+        x[offset] = xs[threadIdx.x];
+        v[offset] = vs[threadIdx.x];
     }
-};
+
+    if (threadIdx.x == 0)
+    {
+        s[blockIdx.x] = *ss;
+    }
+}
 
 }
 
-// not working
-int DHMProcessor::volume_to_list(float *volume, COOTuple **list)
+COOList DHMProcessor::rows_to_list(int *x, int *y, int z, float *v, int *s)
 {
-    thrust::device_ptr<float> dev_ptr(volume);
-    thrust::device_vector<float> dense_tensor(dev_ptr, dev_ptr + NUM_SLICES*N*N);
-    thrust::device_vector<COOTuple> sparse_tensor;
+    int offset = 0;
 
-    IndexIterator ind(0);
-    ZipIterator it_first(thrust::make_tuple(ind, dense_tensor.begin()));
-    ZipIterator it_last(thrust::make_tuple(ind + NUM_SLICES*N*N, dense_tensor.end()));
+    for (int i = 0; i < N; i++)
+    {
+        for (int j = 0; j < s[i]; j++)
+        {
+            x[offset] = x[i*N+j];
+            y[offset] = i;
+            v[offset] = v[i*N+j];
 
-    thrust::transform_if(
-        it_first,
-        it_last,
-        sparse_tensor.begin(),
-        ops::_gen_coo_tuple(N),
-        ops::_filter_zeros(ZERO_THR)
-    );
+            offset++;
+        }
+    }
 
-    // could transpose to get separate arrays per field
-    *list = thrust::raw_pointer_cast(&sparse_tensor[0]);
+    COOList list;
 
-    return sparse_tensor.size();
+    for (int i = 0; i < offset; i++)
+    {
+        COOTuple t = {x[i], y[i], z, v[i]};
+        list.push_back(t);
+    }
+
+    return list;
+}
+
+// not working
+COOList DHMProcessor::volume_to_list(float *volume)
+{
+    int *d_x, *d_y, *d_s;
+    float *d_v;
+
+    int *h_x, *h_y, *h_s;
+    float *h_v;
+
+    // unified...
+    CUDA_CHECK( cudaMalloc(&d_x, N*N*sizeof(int)) );
+    CUDA_CHECK( cudaMalloc(&d_y, N*N*sizeof(int)) );
+    CUDA_CHECK( cudaMalloc(&d_v, N*N*sizeof(int)) );
+    CUDA_CHECK( cudaMalloc(&d_s, N*sizeof(int)) );
+
+    CUDA_CHECK( cudaMallocHost(&h_x, N*N*sizeof(int)) );
+    CUDA_CHECK( cudaMallocHost(&h_y, N*N*sizeof(int)) );
+    CUDA_CHECK( cudaMallocHost(&h_v, N*N*sizeof(int)) );
+    CUDA_CHECK( cudaMallocHost(&h_s, N*sizeof(int)) );
+
+    std::vector<COOTuple> list;
+
+    for (int i = 0; i < NUM_SLICES; i++)
+    {
+        float *slice = volume + i*N*N;
+        ops::_compact_rows<<<N, N, (2*N+1)*sizeof(int)>>>(slice, d_x, d_v, d_s, p);
+        KERNEL_CHECK();
+
+        // not needed w/ unified!
+        CUDA_CHECK( cudaMemcpy(h_x, d_x, N*N*sizeof(int), cudaMemcpyDeviceToHost) );
+        CUDA_CHECK( cudaMemcpy(h_y, d_y, N*N*sizeof(int), cudaMemcpyDeviceToHost) );
+        CUDA_CHECK( cudaMemcpy(h_v, d_v, N*N*sizeof(float), cudaMemcpyDeviceToHost) );
+        CUDA_CHECK( cudaMemcpy(h_s, d_s, N*sizeof(int), cudaMemcpyDeviceToHost) );
+
+        COOList row_list = rows_to_list(h_x, h_y, i, h_v, h_s);
+
+        list.insert(list.end(), row_list.begin(), row_list.end());
+    }
+
+    // unified...
+    CUDA_CHECK( cudaFree(d_x) );
+    CUDA_CHECK( cudaFree(d_y) );
+    CUDA_CHECK( cudaFree(d_v) );
+    CUDA_CHECK( cudaFree(d_s) );
+    CUDA_CHECK( cudaFree(h_x) );
+    CUDA_CHECK( cudaFree(h_y) );
+    CUDA_CHECK( cudaFree(h_v) );
+    CUDA_CHECK( cudaFree(h_s) );
+
+    return list;
 }
 
 
@@ -347,18 +438,11 @@ void DHMProcessor::load_image(std::string path)
 // not obvious how to use unified mem here - Thrust allocation rules it out?
 void DHMProcessor::save_volume(std::string path)
 {
-    COOTuple *d_list;
-
-    int len = volume_to_list(d_volume, &d_list);
-
-    COOTuple *h_list = new COOTuple[len];
-    CUDA_CHECK( cudaMemcpy(h_list, d_list, len*sizeof(COOTuple), cudaMemcpyDeviceToHost) );
+    COOList list = volume_to_list(d_volume);
 
     std::ofstream f(path, std::ios::out | std::ios::binary);
-    f.write((char *)h_list, len*sizeof(COOTuple));
+    f.write((char *)(list.data()), list.size()*sizeof(COOTuple));
     f.close();
-
-    delete[] h_list;
 }
 
 void DHMProcessor::load_volume(std::string path, float *h_volume)
@@ -367,16 +451,18 @@ void DHMProcessor::load_volume(std::string path, float *h_volume)
 
     int len = f.tellg();
 
-    COOTuple *h_list = new COOTuple[len];
+    COOTuple *list = new COOTuple[len];
 
-    f.read((char *)h_list, len*sizeof(COOTuple));
+    f.read((char *)list, len*sizeof(COOTuple));
     f.close();
 
     for (int i = 0; i < len; i++)
     {
-        COOTuple t = h_list[i];
-        h_volume[t.z*N*N+t.y*N+t.z] = t.v;
+        COOTuple t = list[i];
+        h_volume[t.z*N*N+t.y*N+t.x] = t.v;
     }
+
+    delete[] list;
 }
 
 

@@ -28,19 +28,15 @@
 #define DHM_ERROR(msg) (throw DHMException(msg, __FILE__, __LINE__))
 class DHMException : public std::exception {
 public:
-    std::string msg, file;
-    int line;
+    std::string msg;
+//    int line;
 
     DHMException(const char *msg, const char *const file, int const line) {
-        this->msg = std::string(msg);
-        this->line = line;
-        this->file = std::string(file);
+        this->msg =  "DHM exception at line " + std::to_string(line) + " in " + file + ": " + msg;
     }
 
     const char* what() const throw() {
         cudaDeviceReset();
-//        std::string str = "DHM exception at line " + std::to_string(line) + " in " + file + ": " + msg;
-//        return str.c_str();
         return msg.c_str();
     }
 };
@@ -55,8 +51,8 @@ inline void _check_cuda(T result, char const *const func, const char *const file
     }
 }
 
-#define KERNEL_CHECK() _check_kernel(__LINE__, __FILE__);
-inline void _check_kernel(const int line, const char *file) {
+#define KERNEL_CHECK() _check_kernel(__FILE__, __LINE__);
+inline void _check_kernel(const char *const file, const int line) {
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
         throw DHMException("kernel failure", file, line);

@@ -22,6 +22,8 @@ typedef struct {
     float v;
 } COOTuple;
 
+typedef std::vector<COOTuple> COOList;
+
 class DHMProcessor
 {
 private:
@@ -33,7 +35,8 @@ private:
     void apply_filter(complex *, const complex *, const byte *);
     void ifft_stack(complex *, const byte *);
     void mod_stack(const complex *, float *, const byte *);
-    int volume_to_list(float *, COOTuple **);
+    COOList volume_to_list(float *);
+    COOList rows_to_list(int *x, int *y, int z, float *v, int *s);
 
     // experimental parameters
 
