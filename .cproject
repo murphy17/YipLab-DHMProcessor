@@ -33,11 +33,11 @@
 									<listOptionValue builtIn="false" value="/usr/include/opencv2"/>
 								</option>
 								<option id="nvcc.compiler.cpp11option.457431921" name="Enable C++11 support (-std=c++11)" superClass="nvcc.compiler.cpp11option" value="true" valueType="boolean"/>
-								<option id="nvcc.compiler.usefastmath.642599607" superClass="nvcc.compiler.usefastmath" value="true" valueType="boolean"/>
-								<option id="nvcc.compiler.compileroptions.1691892027" superClass="nvcc.compiler.compileroptions" valueType="stringList">
+								<option id="nvcc.compiler.usefastmath.642599607" name="Make use of fast math library (-use_fast_math)" superClass="nvcc.compiler.usefastmath" value="true" valueType="boolean"/>
+								<option id="nvcc.compiler.compileroptions.1691892027" name="Preprocessor options (-Xcompiler)" superClass="nvcc.compiler.compileroptions" valueType="stringList">
 									<listOptionValue builtIn="false" value="-O3"/>
 								</option>
-								<option id="nvcc.compiler.ptxasoptions.452457864" superClass="nvcc.compiler.ptxasoptions" valueType="stringList">
+								<option id="nvcc.compiler.ptxasoptions.452457864" name="ptaxas options (-Xptxas)" superClass="nvcc.compiler.ptxasoptions" valueType="stringList">
 									<listOptionValue builtIn="false" value="-O3"/>
 								</option>
 								<inputType id="nvcc.compiler.input.cu.104077786" superClass="nvcc.compiler.input.cu"/>
@@ -66,6 +66,18 @@
 							</tool>
 						</toolChain>
 					</folderInfo>
+					<fileInfo id="com.nvidia.cuda.ide.eight_zero.configuration.debug.1146503931.1798847385" name="sparse.cu" rcbsApplicability="disable" resourcePath="src/sparse.cu" toolsToInvoke="nvcc.compiler.base.734669753.1145432255">
+						<tool id="nvcc.compiler.base.734669753.1145432255" name="NVCC Compiler" superClass="nvcc.compiler.base.734669753"/>
+						<tool customBuildStep="true" id="org.eclipse.cdt.managedbuilder.ui.rcbs.1151676417" name="Resource Custom Build Step">
+							<inputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.inputtype.2118334564" name="Resource Custom Build Step Input Type">
+								<additionalInput kind="additionalinputdependency" paths=""/>
+							</inputType>
+							<outputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.outputtype.343633725" name="Resource Custom Build Step Output Type"/>
+						</tool>
+					</fileInfo>
+					<sourceEntries>
+						<entry excluding="src/sparse.cu" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+					</sourceEntries>
 				</configuration>
 			</storageModule>
 			<storageModule moduleId="com.nvidia.cuda.ide.build.project.ICudaProjectConfiguration">

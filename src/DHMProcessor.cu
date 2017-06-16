@@ -21,9 +21,13 @@
 //    _func(img, _out, dims, _params);
 //}
 
+bool DHMProcessor::is_initialized = false;
+
 DHMProcessor::DHMProcessor(std::string output_dir) {
     try
     {
+        if (is_initialized) DHM_ERROR("Only a single instance of DHMProcessor is permitted");
+
         this->outputDir = output_dir;
 
         // reset the GPU, use proper exceptions to do this...
@@ -40,15 +44,13 @@ DHMProcessor::DHMProcessor(std::string output_dir) {
 
         // allocate buffers, setup FFTs
 
-        CUDA_CHECK( cudaStreamCreate(&math_stream) );
-        CUDA_CHECK( cudaStreamCreate(&copy_stream) );
+        CUDA_CHECK( cudaStreamCreateWithFlags(&async_stream, cudaStreamNonBlocking) );
 
         CUDA_CHECK( cufftCreate(&fft_plan) );
         CUDA_CHECK( cufftXtMakePlanMany(fft_plan, 2, fft_dims,
                                         NULL, 1, 0, fft_type,
                                         NULL, 1, 0, fft_type,
                                         1, &fft_work_size, fft_type) );
-        CUDA_CHECK( cufftSetStream(fft_plan, math_stream) );
 
         // only one quadrant stored on host -- point is to minimize transfer time
         CUDA_CHECK( cudaMallocHost(&h_filter, NUM_SLICES*(N/2+1)*(N/2+1)*sizeof(complex)) );
@@ -56,15 +58,19 @@ DHMProcessor::DHMProcessor(std::string output_dir) {
         CUDA_CHECK( cudaMalloc(&d_filter[0], NUM_SLICES*N*N*sizeof(complex)) );
         CUDA_CHECK( cudaMalloc(&d_filter[1], NUM_SLICES*N*N*sizeof(complex)) );
 
+        CUDA_CHECK( cudaMallocHost(&h_frame, N*N*sizeof(byte)) );
         CUDA_CHECK( cudaMalloc(&d_frame, N*N*sizeof(byte)) );
 
         CUDA_CHECK( cudaMalloc(&d_image, N*N*sizeof(complex)) );
 
-        CUDA_CHECK( cudaMallocHost(&h_volume, NUM_SLICES*N*N*sizeof(float)) );
         CUDA_CHECK( cudaMalloc(&d_volume, NUM_SLICES*N*N*sizeof(float)) );
 
         CUDA_CHECK( cudaMallocHost(&h_mask, NUM_SLICES*sizeof(byte)) );
         CUDA_CHECK( cudaMalloc(&d_mask, NUM_SLICES*sizeof(byte)) );
+
+        // allow unified memory
+        if (UNIFIED_MEM)
+            cudaSetDeviceFlags(cudaDeviceMapHost);
 
         // construct filter stack, keep on host
         gen_filter_quadrant(h_filter);
@@ -72,10 +78,12 @@ DHMProcessor::DHMProcessor(std::string output_dir) {
         // copy to GPU in preparation for first frame
         buffer_pos = 0;
         transfer_filter_async(h_filter, d_filter[buffer_pos]);
-        CUDA_CHECK( cudaStreamSynchronize(copy_stream) );
+        CUDA_CHECK( cudaStreamSynchronize(async_stream) );
         // initially query all slices
         memset(h_mask, 1, NUM_SLICES);
         CUDA_CHECK( cudaMemcpy(d_mask, h_mask, NUM_SLICES*sizeof(byte), cudaMemcpyHostToDevice) );
+
+        is_initialized = true;
     }
     catch (DHMException &e)
     {
@@ -89,11 +97,10 @@ DHMProcessor::~DHMProcessor() {
     {
         CUDA_CHECK( cufftDestroy(fft_plan) );
 
-        CUDA_CHECK( cudaStreamDestroy(math_stream) );
-        CUDA_CHECK( cudaStreamDestroy(copy_stream) );
+        CUDA_CHECK( cudaStreamDestroy(async_stream) );
 
+        CUDA_CHECK( cudaFreeHost(h_frame) );
         CUDA_CHECK( cudaFreeHost(h_filter) );
-        CUDA_CHECK( cudaFreeHost(h_volume) );
         CUDA_CHECK( cudaFreeHost(h_mask) );
 
         CUDA_CHECK( cudaFree(d_filter[0]) );
@@ -102,6 +109,8 @@ DHMProcessor::~DHMProcessor() {
         CUDA_CHECK( cudaFree(d_volume) );
         CUDA_CHECK( cudaFree(d_mask) );
         CUDA_CHECK( cudaFree(d_image) );
+
+        is_initialized = false;
     }
     catch (DHMException &e)
     {
@@ -166,13 +175,13 @@ void DHMProcessor::process_folder(std::string input_dir) {
 
         for (std::string &f : dir)
         {
-            cv::Mat frame_mat = cv::imread(f, CV_LOAD_IMAGE_GRAYSCALE);
+            load_image(f);
 
-            if ( frame_mat.cols != N || frame_mat.rows != N ) DHM_ERROR("Images must be of size NxN");
+            process_frame(false);
 
-            h_frame = frame_mat.data;
+            //process_volume(); // callback!!!
 
-            process_frame(h_frame, h_volume, false, false); // callback!!!
+            save_volume(f);
 
     //        display_volume(h_volume);
 
@@ -186,34 +195,25 @@ void DHMProcessor::process_folder(std::string input_dir) {
     }
 }
 
-// this would be a CALLBACK
-void DHMProcessor::process_frame(byte *h_frame, float *h_volume, bool use_camera, bool unified_mem)
+// this would be a CALLBACK (no - but part of one, load/store ops...)
+void DHMProcessor::process_frame(bool use_camera)
 {
     try
     {
-        if (!unified_mem)
-        {
-            // copy from camera's frame buffer to working area on device
-            CUDA_CHECK( cudaMemcpy(d_frame, h_frame, N*N*sizeof(byte), cudaMemcpyHostToDevice) );
-        } else {
-            d_frame = h_frame;
-        }
-
         // start transferring filter quadrants to alternating buffer
         // ... waiting for previous ops to finish first
-        CUDA_CHECK( cudaStreamSynchronize(math_stream) );
-        CUDA_CHECK( cudaStreamSynchronize(copy_stream) );
+        CUDA_CHECK( cudaDeviceSynchronize() );
         transfer_filter_async(h_filter, d_filter[!buffer_pos]);
 
         // convert 8-bit image to real channel of complex float
-        ops::_b2c<<<N, N, 0, math_stream>>>(d_frame, d_image);
+        ops::_b2c<<<N, N>>>(d_frame, d_image);
         KERNEL_CHECK();
 
         // FFT image in-place
         CUDA_CHECK( cufftXtExec(fft_plan, d_image, d_image, CUFFT_FORWARD) );
 
         // multiply image with stored quadrant of filter stack
-        ops::_quad_mul<<<N/2+1, N/2+1, 0, math_stream>>>(d_filter[buffer_pos], d_image, d_mask, p);
+        ops::_quad_mul<<<N/2+1, N/2+1>>>(d_filter[buffer_pos], d_image, d_mask, p);
         KERNEL_CHECK();
 
         // inverse FFT the product, and take complex magnitude
@@ -223,23 +223,21 @@ void DHMProcessor::process_frame(byte *h_frame, float *h_volume, bool use_camera
             {
                 CUDA_CHECK( cufftXtExec(fft_plan, d_filter[buffer_pos] + i*N*N, d_filter[buffer_pos] + i*N*N, CUFFT_INVERSE) );
 
-                ops::_modulus<<<N, N, 0, math_stream>>>(d_filter[buffer_pos] + i*N*N, d_volume + i*N*N);
+                ops::_modulus<<<N, N>>>(d_filter[buffer_pos] + i*N*N, d_volume + i*N*N);
                 KERNEL_CHECK();
+
+                // normalize slice to (0,1)?
             }
         }
 
         // construct volume from one frame's worth of slices once they're ready...
+        // CUDA_CHECK( cudaDeviceSynchronize() );
         // ...
-        CUDA_CHECK( cudaStreamSynchronize(math_stream) );
         // ... which will also update the host-side slice masks
         memset(h_mask, 1, NUM_SLICES);
 
-        // transfer volume from device to host...
-        // ...if you're gonna do this, it should be async...
-        CUDA_CHECK( cudaMemcpy(h_volume, d_volume, NUM_SLICES*N*N*sizeof(float), cudaMemcpyDeviceToHost) ); // temp
-
         // sync up the host-side and device-side masks
-        CUDA_CHECK( cudaMemcpyAsync(d_mask, h_mask, NUM_SLICES*sizeof(byte), cudaMemcpyHostToDevice, math_stream) );
+        CUDA_CHECK( cudaMemcpy(d_mask, h_mask, NUM_SLICES*sizeof(byte), cudaMemcpyHostToDevice) );
 
         // flip the buffer
         buffer_pos = !buffer_pos;

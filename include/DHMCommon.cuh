@@ -10,6 +10,7 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <fstream>
 #include <exception>
 #include <ctime>
 #include <algorithm>
@@ -72,7 +73,7 @@ inline void _check_kernel(const int line, const char *file) {
 //
 //public:
 //    DHMCallback(void *, void (*)(float *, byte *, void *), void *);
-//    void eval(float *, byte *);
+//    void operator()(float *, byte *);
 //};
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -16,6 +16,12 @@
 #include "DHMCommon.cuh"
 #include "ops.cuh"
 
+// hoping this ends up using 128-byte ops
+typedef struct {
+    int3 xyz;
+    float v;
+} COOTuple;
+
 class DHMProcessor
 {
 private:
@@ -28,6 +34,8 @@ private:
     void ifft_stack(complex *, const byte *);
     void mod_stack(const complex *, float *, const byte *);
 
+    int volume_to_list(float *, COOTuple **);
+
     void display_image(byte *);
     void display_volume(float *);
 
@@ -37,14 +45,19 @@ private:
     std::string outputDir;
 
     // TODO: take some of these from constructor
-    const int N = 1024;
-    const int NUM_SLICES = 100;
-    const int NUM_FRAMES = 10;
-    const float DX = (5.32f / 1024.f);
-    const float DY = (6.66f / 1280.f);
-    const float DZ = 1.f;
-    const float Z0 = 30.f;
-    const float LAMBDA0 = 0.000488f;
+    static const int N = 1024;
+    static const int NUM_SLICES = 100;
+    static const int NUM_FRAMES = 10;
+    static constexpr float DX = (5.32f / 1024.f);
+    static constexpr float DY = (6.66f / 1280.f);
+    static constexpr float DZ = 1.f;
+    static constexpr float Z0 = 30.f;
+    static constexpr float LAMBDA0 = 0.000488f;
+    static constexpr float ZERO_THR = 1e-3;
+
+    static const bool UNIFIED_MEM = true; // Jetson
+
+    static bool is_initialized;
 
     DHMParameters p;
 
@@ -61,7 +74,6 @@ private:
 
     complex *d_image;
 
-    float *h_volume;
     float *d_volume;
 
     cufftHandle fft_plan;
@@ -69,9 +81,18 @@ private:
     long long fft_dims[2] = {N, N};
     size_t fft_work_size = 0;
 
-    cudaStream_t math_stream, copy_stream;
+    cudaStream_t async_stream;
 
     void (*callback)(float *, byte *, void *) = nullptr;
+
+    void load_image(std::string);
+    void process_frame(bool);
+    void save_volume(std::string);
+
+//    void save_frame(byte *);
+
+    // should this be in constructor?
+    void set_callback(void (*)(float *, byte *, void *));
 
 public:
     DHMProcessor(std::string);
@@ -79,12 +100,5 @@ public:
 
     void process_camera();
     void process_folder(std::string);
-
-    void process_frame(byte *, float *, bool, bool);
-
-//    void save_frame(byte *);
-
-    // should this be in constructor?
-    void set_callback(void (*)(float *, byte *, void *));
 };
 

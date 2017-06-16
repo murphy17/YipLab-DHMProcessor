@@ -7,7 +7,15 @@
 
 #pragma once
 
+#include <thrust/transform.h>
+#include <thrust/tuple.h>
+#include <thrust/iterator/zip_iterator.h>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/device_ptr.h>
+#include <thrust/device_vector.h>
+
 #include "DHMCommon.cuh"
+#include "DHMProcessor.cuh"
 
 namespace ops {
 
