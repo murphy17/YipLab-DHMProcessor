@@ -39,8 +39,9 @@ public:
 
     const char* what() const throw() {
         cudaDeviceReset();
-        std::string str = "DHM exception at line " + std::to_string(line) + " in " + file + ": " + msg;
-        return str.c_str();
+//        std::string str = "DHM exception at line " + std::to_string(line) + " in " + file + ": " + msg;
+//        return str.c_str();
+        return msg.c_str();
     }
 };
 

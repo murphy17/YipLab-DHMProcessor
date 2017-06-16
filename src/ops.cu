@@ -293,6 +293,7 @@ struct _filter_zeros {
 
 }
 
+// not working
 int DHMProcessor::volume_to_list(float *volume, COOTuple **list)
 {
     thrust::device_ptr<float> dev_ptr(volume);
@@ -359,3 +360,28 @@ void DHMProcessor::save_volume(std::string path)
 
     delete[] h_list;
 }
+
+void DHMProcessor::load_volume(std::string path, float *h_volume)
+{
+    std::ifstream f(path, std::ios::in | std::ios::binary | std::ios::ate);
+
+    int len = f.tellg();
+
+    COOTuple *h_list = new COOTuple[len];
+
+    f.read((char *)h_list, len*sizeof(COOTuple));
+    f.close();
+
+    for (int i = 0; i < len; i++)
+    {
+        COOTuple t = h_list[i];
+        h_volume[t.z*N*N+t.y*N+t.z] = t.v;
+    }
+}
+
+
+
+
+
+
+

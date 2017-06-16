@@ -173,17 +173,21 @@ void DHMProcessor::process_folder(std::string input_dir) {
 
         if ( dir.size() == 0 ) DHM_ERROR("No bitmaps found");
 
-        for (std::string &f : dir)
+        for (std::string &f_in : dir)
         {
-            load_image(f);
+            load_image(f_in);
 
             process_frame(false);
 
             //process_volume(); // callback!!!
 
-            save_volume(f);
+            std::string f_out = f_in.substr(f_in.find_last_of("/") + 1) + ".bin";
+            save_volume(f_out);
 
-    //        display_volume(h_volume);
+            float *h_volume = new float[NUM_SLICES*N*N];
+            load_volume(f_out, h_volume);
+            display_volume(h_volume);
+            delete[] h_volume;
 
             // write volume to disk... what format? HDF5?
         }

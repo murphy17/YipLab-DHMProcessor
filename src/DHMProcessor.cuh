@@ -18,7 +18,7 @@
 
 // hoping this ends up using 128-byte ops
 typedef struct {
-    int3 xyz;
+    int x, y, z;
     float v;
 } COOTuple;
 
@@ -33,11 +33,7 @@ private:
     void apply_filter(complex *, const complex *, const byte *);
     void ifft_stack(complex *, const byte *);
     void mod_stack(const complex *, float *, const byte *);
-
     int volume_to_list(float *, COOTuple **);
-
-    void display_image(byte *);
-    void display_volume(float *);
 
     // experimental parameters
 
@@ -55,7 +51,7 @@ private:
     static constexpr float LAMBDA0 = 0.000488f;
     static constexpr float ZERO_THR = 1e-3;
 
-    static const bool UNIFIED_MEM = true; // Jetson
+    static const bool UNIFIED_MEM = false; // Jetson
 
     static bool is_initialized;
 
@@ -85,9 +81,14 @@ private:
 
     void (*callback)(float *, byte *, void *) = nullptr;
 
+    void display_image(byte *);
+    void display_volume(float *);
+
     void load_image(std::string);
     void process_frame(bool);
     void save_volume(std::string);
+
+    void load_volume(std::string, float*);
 
 //    void save_frame(byte *);
 
