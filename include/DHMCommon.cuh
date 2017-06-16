@@ -17,6 +17,8 @@
 #include <vector>
 #include <cstdlib>
 
+#include <cusparse_v2.h>
+
 #include "cufftXt.h"
 
 #include "common.h"
@@ -55,7 +57,7 @@ inline void _check_cuda(T result, char const *const func, const char *const file
 inline void _check_kernel(const char *const file, const int line) {
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
-        throw DHMException("kernel failure", file, line);
+        throw DHMException(_cudaGetErrorEnum(err), file, line);
     }
 }
 

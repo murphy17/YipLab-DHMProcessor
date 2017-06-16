@@ -43,17 +43,6 @@ private:
 //    std::string inputDir;
     std::string outputDir;
 
-    // TODO: take some of these from constructor
-    static const int N = 1024;
-    static const int NUM_SLICES = 100;
-    static const int NUM_FRAMES = 10;
-    static constexpr float DX = (5.32f / 1024.f);
-    static constexpr float DY = (6.66f / 1280.f);
-    static constexpr float DZ = 1.f;
-    static constexpr float Z0 = 30.f;
-    static constexpr float LAMBDA0 = 0.000488f;
-    static constexpr float ZERO_THR = 1e-3;
-
     static const bool UNIFIED_MEM = false; // Jetson
 
     static bool is_initialized;
@@ -104,5 +93,17 @@ public:
 
     void process_camera();
     void process_folder(std::string);
+
+    // TODO: take some of these from constructor
+    static const int N = 1024;
+    static const int NUM_SLICES = 100;
+    static const int NUM_FRAMES = 10;
+    static constexpr float DX = (5.32f / 1024.f);
+    static constexpr float DY = (6.66f / 1280.f);
+    static constexpr float DZ = 1.f;
+    static constexpr float Z0 = 30.f;
+    static constexpr float LAMBDA0 = 0.000488f;
+    static constexpr float ZERO_THR = 1e-3;
+
 };
 

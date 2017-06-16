@@ -180,13 +180,16 @@ void DHMProcessor::process_folder(std::string input_dir) {
             process_frame(false);
 
             //process_volume(); // callback!!!
+            float *h_volume = new float[NUM_SLICES*N*N];
+//            CUDA_CHECK( cudaMemcpy(h_volume, d_volume, NUM_SLICES*N*N*sizeof(float), cudaMemcpyDeviceToHost) );
+//            display_volume(h_volume);
 
-            std::string f_out = f_in.substr(f_in.find_last_of("/") + 1) + ".bin";
+            std::string f_out = outputDir + "/" + f_in.substr(f_in.find_last_of("/") + 1) + ".bin";
             save_volume(f_out);
 
-            float *h_volume = new float[NUM_SLICES*N*N];
             load_volume(f_out, h_volume);
             display_volume(h_volume);
+
             delete[] h_volume;
 
             // write volume to disk... what format? HDF5?
