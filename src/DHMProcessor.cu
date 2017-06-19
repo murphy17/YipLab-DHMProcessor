@@ -10,16 +10,24 @@
 
 //namespace YipLab {
 
+DHMCallback::DHMCallback() {
+    _func = nullptr;
+}
+
 // how to give the callback all the parameters?
-//DHMCallback::DHMCallback(void *out, void (*func)(float *, byte *, void *), void *params) {
-//    _out = out;
-//    _func = func;
-//    _params = params;
-//}
-//
-//void DHMCallback::eval(float *img, byte *mask *dims) {
-//    _func(img, _out, dims, _params);
-//}
+DHMCallback::DHMCallback(void (*func)(float *, byte *, DHMParameters)) {
+    _func = func;
+}
+
+void DHMCallback::operator()(float *img, byte *mask, DHMParameters params) {
+    if (_func == nullptr)
+        DHM_ERROR("Callback not set");
+    try {
+        _func(img, mask, params);
+    } catch (...) {
+        DHM_ERROR("Callback failure");
+    }
+}
 
 bool DHMProcessor::is_initialized = false;
 
@@ -72,6 +80,12 @@ DHMProcessor::DHMProcessor(std::string output_dir) {
         if (UNIFIED_MEM)
             cudaSetDeviceFlags(cudaDeviceMapHost);
 
+        // setup sparse save - just proof of concept, this is really slow
+        CUDA_CHECK( cusparseCreate(&handle) ); // this takes a long time, like 700ms
+        CUDA_CHECK( cusparseCreateMatDescr(&descr) );
+        CUDA_CHECK( cusparseSetMatType(descr, CUSPARSE_MATRIX_TYPE_GENERAL) );
+        CUDA_CHECK( cusparseSetMatIndexBase(descr, CUSPARSE_INDEX_BASE_ZERO) );
+
         // construct filter stack, keep on host
         gen_filter_quadrant(h_filter);
 
@@ -95,6 +109,9 @@ DHMProcessor::DHMProcessor(std::string output_dir) {
 DHMProcessor::~DHMProcessor() {
     try
     {
+        CUDA_CHECK( cusparseDestroyMatDescr(descr) );
+        CUDA_CHECK( cusparseDestroy(handle) );
+
         CUDA_CHECK( cufftDestroy(fft_plan) );
 
         CUDA_CHECK( cudaStreamDestroy(async_stream) );
@@ -177,20 +194,25 @@ void DHMProcessor::process_folder(std::string input_dir) {
         {
             load_image(f_in);
 
-            process_frame(false);
+            CUDA_TIMER( process_frame(false) ); // *this* triggers the volume processing callback
+            // TODO: ... and shouldn't hand over control until it's done!
 
-            //process_volume(); // callback!!!
-            float *h_volume = new float[NUM_SLICES*N*N];
-//            CUDA_CHECK( cudaMemcpy(h_volume, d_volume, NUM_SLICES*N*N*sizeof(float), cudaMemcpyDeviceToHost) );
+            // TODO: I *think* it's safe to move the callback outside...?
+            // (sync up masks at the start, not end)
+
+//            for (int i = 0; i < NUM_SLICES; i++)
+//                CUDA_SHOW(d_volume + i*N*N, N, N);
+
+            for (int i = 0; i < NUM_SLICES; i++)
+                CUDA_SHOW(d_volume + i*N*N, N, N);
+
+//            std::string f_out = outputDir + "/" + f_in.substr(f_in.find_last_of("/") + 1) + ".bin";
+//            save_volume(f_out);
+//
+//            load_volume(f_out, h_volume);
 //            display_volume(h_volume);
-
-            std::string f_out = outputDir + "/" + f_in.substr(f_in.find_last_of("/") + 1) + ".bin";
-            save_volume(f_out);
-
-            load_volume(f_out, h_volume);
-            display_volume(h_volume);
-
-            delete[] h_volume;
+//
+//            delete[] h_volume;
 
             // write volume to disk... what format? HDF5?
         }
@@ -202,25 +224,31 @@ void DHMProcessor::process_folder(std::string input_dir) {
     }
 }
 
+// will I expose the callback object or no?
+void DHMProcessor::set_callback(DHMCallback cb)
+{
+    callback = cb;
+}
+
 // this would be a CALLBACK (no - but part of one, load/store ops...)
 void DHMProcessor::process_frame(bool use_camera)
 {
     try
     {
-        // start transferring filter quadrants to alternating buffer
+        // start transferring filter quadrants to alternating buffer, for *next* frame
         // ... waiting for previous ops to finish first
         CUDA_CHECK( cudaDeviceSynchronize() );
         transfer_filter_async(h_filter, d_filter[!buffer_pos]);
 
         // convert 8-bit image to real channel of complex float
-        ops::_b2c<<<N, N>>>(d_frame, d_image);
+        _b2c<<<N, N>>>(d_frame, d_image);
         KERNEL_CHECK();
 
         // FFT image in-place
         CUDA_CHECK( cufftXtExec(fft_plan, d_image, d_image, CUFFT_FORWARD) );
 
         // multiply image with stored quadrant of filter stack
-        ops::_quad_mul<<<N/2+1, N/2+1>>>(d_filter[buffer_pos], d_image, d_mask, p);
+        _quad_mul<<<N/2+1, N/2+1>>>(d_filter[buffer_pos], d_image, d_mask, p);
         KERNEL_CHECK();
 
         // inverse FFT the product, and take complex magnitude
@@ -230,7 +258,7 @@ void DHMProcessor::process_frame(bool use_camera)
             {
                 CUDA_CHECK( cufftXtExec(fft_plan, d_filter[buffer_pos] + i*N*N, d_filter[buffer_pos] + i*N*N, CUFFT_INVERSE) );
 
-                ops::_modulus<<<N, N>>>(d_filter[buffer_pos] + i*N*N, d_volume + i*N*N);
+                _modulus<<<N, N>>>(d_filter[buffer_pos] + i*N*N, d_volume + i*N*N);
                 KERNEL_CHECK();
 
                 // normalize slice to (0,1)?
@@ -238,13 +266,14 @@ void DHMProcessor::process_frame(bool use_camera)
         }
 
         // construct volume from one frame's worth of slices once they're ready...
-        // CUDA_CHECK( cudaDeviceSynchronize() );
-        // ...
-        // ... which will also update the host-side slice masks
-        memset(h_mask, 1, NUM_SLICES);
+        CUDA_CHECK( cudaStreamSynchronize(0) ); // allow the copy stream to continue in background
 
-        // sync up the host-side and device-side masks
-        CUDA_CHECK( cudaMemcpy(d_mask, h_mask, NUM_SLICES*sizeof(byte), cudaMemcpyHostToDevice) );
+        // run the callback ...
+        callback(d_volume, d_mask, p);
+        KERNEL_CHECK();
+
+        // sync up the host-side and device-side masks, TODO: ensure ONCE IT'S DONE!!!
+        CUDA_CHECK( cudaMemcpy(h_mask, d_mask, NUM_SLICES*sizeof(byte), cudaMemcpyDeviceToHost) );
 
         // flip the buffer
         buffer_pos = !buffer_pos;
@@ -256,23 +285,40 @@ void DHMProcessor::process_frame(bool use_camera)
     }
 }
 
-void DHMProcessor::display_image(byte *h_image)
-{
-    cv::Mat mat(N, N, CV_8U, h_image);
-    cv::imshow("Display window", mat);
-    cv::waitKey(0);
-}
+/*
+// TODO: Micromanager
+void DHMProcessor::process_camera() {
+    // stub
 
-void DHMProcessor::display_volume(float *h_volume)
-{
-    for (int i = 0; i< NUM_SLICES; i++)
-    {
-        cv::Mat mat(N, N, CV_32F, h_volume + i*N*N);
-        cv::normalize(mat, mat, 1.0, 0.0, cv::NORM_MINMAX, -1);
-        cv::imshow("Display window", mat);
-        cv::waitKey(0);
-    }
+    const int codec = CV_FOURCC('F','F','V','1'); // FFMPEG lossless
+    const int fps = 1;
+
+    const std::time_t now = std::time(0);
+    const std::tm *ltm = std::localtime(&now);
+
+    std::string path = outputDir + "/" +
+                       std::to_string(1900 + ltm->tm_year) + "_" +
+                       std::to_string(1 + ltm->tm_mon) + "_" +
+                       std::to_string(ltm->tm_mday) + "_" +
+                       std::to_string(1 + ltm->tm_hour) + "_" +
+                       std::to_string(1 + ltm->tm_min) + "_" +
+                       std::to_string(1 + ltm->tm_sec) +
+                       ".mpg";
+
+    writer.open(path, codec, fps, cv::Size_<int>(N, N), false);
+    if (!writer.isOpened()) throw DHMException("Cannot open output video", __LINE__, __FILE__);
+    // async
+    // also needs to save images
+
+    // Ueye stuff...
+
+
+    // save the raw video feed too
+    // this could happen in another thread, don't think it'll take that long though
+    cv::Mat frame_mat(N, N, CV_8U, frame);
+    writer.write(frame_mat);
 }
+*/
 
 //}
 

@@ -16,14 +16,6 @@
 #include "DHMCommon.cuh"
 #include "ops.cuh"
 
-// hoping this ends up using 128-byte ops
-typedef struct {
-    int x, y, z;
-    float v;
-} COOTuple;
-
-typedef std::vector<COOTuple> COOList;
-
 class DHMProcessor
 {
 private:
@@ -35,8 +27,6 @@ private:
     void apply_filter(complex *, const complex *, const byte *);
     void ifft_stack(complex *, const byte *);
     void mod_stack(const complex *, float *, const byte *);
-    COOList volume_to_list(float *);
-    COOList rows_to_list(int *x, int *y, int z, float *v, int *s);
 
     // experimental parameters
 
@@ -45,9 +35,10 @@ private:
 
     static const bool UNIFIED_MEM = false; // Jetson
 
-    static bool is_initialized;
+    static bool is_initialized; // singleton
 
     DHMParameters p;
+    DHMCallback callback;
 
     cv::VideoWriter writer;
 
@@ -71,7 +62,8 @@ private:
 
     cudaStream_t async_stream;
 
-    void (*callback)(float *, byte *, void *) = nullptr;
+    cusparseHandle_t handle = 0;
+    cusparseMatDescr_t descr = 0;
 
     void display_image(byte *);
     void display_volume(float *);
@@ -82,10 +74,7 @@ private:
 
     void load_volume(std::string, float*);
 
-//    void save_frame(byte *);
-
-    // should this be in constructor?
-    void set_callback(void (*)(float *, byte *, void *));
+//    void save_frame(byte *); // TODO
 
 public:
     DHMProcessor(std::string);
@@ -93,6 +82,9 @@ public:
 
     void process_camera();
     void process_folder(std::string);
+
+    // should this be in constructor?
+    void set_callback(DHMCallback);
 
     // TODO: take some of these from constructor
     static const int N = 1024;

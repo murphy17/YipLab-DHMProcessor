@@ -1,6 +1,8 @@
 /*
  * ops.cu
  *
+ * Tried to keep all the "business logic" in here
+ *
  *  Created on: Jun 14, 2017
  *      Author: michaelmurphy
  */
@@ -11,8 +13,6 @@
 ///////////////////////////////////////////////////////////////////////////////
 // Complex arithmetic
 ///////////////////////////////////////////////////////////////////////////////
-
-namespace ops {
 
 __device__ __forceinline__ complex conj(const complex a)
 {
@@ -30,14 +30,9 @@ __device__ __forceinline__ complex cmul(const complex a, const complex b)
     return c;
 }
 
-}
-
-
 ///////////////////////////////////////////////////////////////////////////////
 // Element-wise operations
 ///////////////////////////////////////////////////////////////////////////////
-
-namespace ops {
 
 __global__
 void _b2c(const __restrict__ byte *b, complex *z)
@@ -70,13 +65,10 @@ void _modulus(const __restrict__ complex *z, float *r)
     r[offset] = hypotf(z[offset].x, z[offset].y);
 }
 
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Construct "PSF"
 ///////////////////////////////////////////////////////////////////////////////
-
-namespace ops {
 
 __global__ void _gen_filter_slice(
     complex *g,
@@ -101,8 +93,6 @@ __global__ void _gen_filter_slice(
 
     // re(iz) = -im(z), im(iz) = re(z)
     g[i*p.N+j] = {-im / r, re / r};
-}
-
 }
 
 void DHMProcessor::transfer_filter_async(complex *h_filter, complex *d_filter)
@@ -131,14 +121,14 @@ void DHMProcessor::gen_filter_quadrant(complex *h_filter) {
 
     for (int i = 0; i < NUM_SLICES; i++)
     {
-        ops::_gen_filter_slice<<<N, N>>>(slice, Z0 + i * DZ, p);
+        _gen_filter_slice<<<N, N>>>(slice, Z0 + i * DZ, p);
         KERNEL_CHECK();
 
         // FFT in-place
         CUDA_CHECK( cufftXtExec(fft_plan, slice, slice, CUFFT_INVERSE) );
 
         // frequency shift -- eliminates need to copy later
-        ops::_freq_shift<<<N, N>>>(slice);
+        _freq_shift<<<N, N>>>(slice);
         KERNEL_CHECK();
 
         // copy single quadrant to host
@@ -159,8 +149,6 @@ void DHMProcessor::gen_filter_quadrant(complex *h_filter) {
 ///////////////////////////////////////////////////////////////////////////////
 // Quadrant multiply kernel
 ///////////////////////////////////////////////////////////////////////////////
-
-namespace ops {
 
 // using fourfold symmetry of z
 __global__
@@ -243,175 +231,73 @@ void _quad_mul(
     }
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// Convert 3D volume to sparse
+///////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+__global__ void _cudaFill(T *devPtr, T value, size_t count)
+{
+    size_t offset = blockIdx.x * blockDim.x + threadIdx.x;
+    if (offset < count)
+    {
+        devPtr[offset] = value;
+    }
+}
+template <typename T>
+inline cudaError_t cudaFill(T *devPtr, T value, size_t count)
+{
+    int num_threads = count < 1024 ? count : 1024;
+    _cudaFill<<<(count + 1023) / 1024, num_threads>>>(devPtr, value, count);
+    return cudaGetLastError();
 }
 
+void volume2sparse(const cusparseHandle_t handle, const cusparseMatDescr_t descr,
+                   const float *vol, int **x, int m, int **y, int n, int **z, int p, float **v, int *totalNnz)
+{
+    int nnz;
+    int *dNnzPerRow, *dCsrRowPtrA;
+    CUDA_CHECK( cudaMalloc(&dNnzPerRow, m*sizeof(int)) );
+    CUDA_CHECK( cudaMalloc(&dCsrRowPtrA, (m+1)*sizeof(int)) );
 
-///////////////////////////////////////////////////////////////////////////////
-// Convert 3D volume to sparse (COO) format
-///////////////////////////////////////////////////////////////////////////////
+    CUDA_CHECK( cusparseSnnz(handle, CUSPARSE_DIRECTION_ROW, m, n*p, descr, vol, m, dNnzPerRow, totalNnz) );
 
-//typedef thrust::counting_iterator<int> IndexIterator;
-//typedef thrust::device_vector<float>::iterator FloatIterator;
-//typedef thrust::tuple<IndexIterator, FloatIterator> IteratorTuple;
-//typedef thrust::zip_iterator<IteratorTuple> ZipIterator;
+    CUDA_CHECK( cudaMalloc(x, (*totalNnz)*sizeof(int)) );
+    CUDA_CHECK( cudaMalloc(y, (*totalNnz)*sizeof(int)) );
+    CUDA_CHECK( cudaMalloc(z, (*totalNnz)*sizeof(int)) );
+    CUDA_CHECK( cudaMalloc(v, (*totalNnz)*sizeof(float)) );
 
-//namespace ops {
-//
-//struct _gen_coo_tuple : public thrust::unary_function<thrust::tuple<int, float>,float> {
-//    int N;
-//    __host__ __device__
-//    _gen_coo_tuple(int n)
-//    {
-//        N = n;
-//    }
-//    __host__ __device__
-//    COOTuple operator()(const thrust::tuple<int, float> &t)
-//    {
-//        int ii = thrust::get<0>(t);
-//        int iz = ii / (N*N);
-//        int iy = (ii - iz*N*N) / N;
-//        int ix = ii - iz*N*N - iy*N;
-//        float v = thrust::get<1>(t);
-//        COOTuple c = {ix, iy, iz, v};
-//        return c;
-//    }
-//};
-//
-//struct _filter_zeros {
-//    float ZERO_THR;
-//    __host__ __device__
-//    _filter_zeros(float thr)
-//    {
-//        ZERO_THR = thr;
-//    }
-//    bool operator()(const thrust::tuple<int, float> t)
-//    {
-//        float v = thrust::get<1>(t);
-//        return (v > ZERO_THR);
-//    }
-//};
+    int s = 0;
 
-namespace ops {
+    for (int k = 0; k < p; k++)
+    {
+        const float *slice = vol + m * n * k;
 
-// compact rows
-//__global__
-//void _compact_rows(const float *slice, int *x, float *v, int *s, const DHMParameters p)
-//{
-//    __shared__ int xs[DHMProcessor::N];
-//    __shared__ float vs[DHMProcessor::N];
-//    __shared__ unsigned int ss;
-//
-//    const float *row = slice + blockIdx.x * blockDim.x;
-//
-//    if (threadIdx.x == 0)
-//    {
-//        ss = 0;
-//    }
-//    __syncthreads();
-//
-//    float val = row[threadIdx.x];
-//
-//    if (val > 0)
-//    {
-//        int idx = atomicInc(&ss, 1);
-//        xs[idx] = threadIdx.x;
-//        vs[idx] = val;
-//    }
-//    __syncthreads();
-//
-//    if (threadIdx.x < ss)
-//    {
-//        int offset = blockIdx.x * blockDim.x + threadIdx.x;
-//        x[offset] = xs[threadIdx.x];
-//        v[offset] = vs[threadIdx.x];
-//    }
-//
-//    if (threadIdx.x == 0)
-//    {
-//        s[blockIdx.x] = ss;
-//    }
-//}
-//
-//}
-//
-//COOList DHMProcessor::rows_to_list(int *x, int *y, int z, float *v, int *s)
-//{
-//    int offset = 0;
-//
-//    for (int i = 0; i < N; i++)
-//    {
-//        for (int j = 0; j < s[i]; j++)
-//        {
-//            x[offset] = x[i*N+j];
-//            y[offset] = i;
-//            v[offset] = v[i*N+j];
-//
-//            offset++;
-//        }
-//    }
-//
-//    COOList list;
-//
-//    for (int i = 0; i < offset; i++)
-//    {
-//        COOTuple t = {x[i], y[i], z, v[i]};
-//        list.push_back(t);
-//    }
-//
-//    return list;
-//}
-//
-//// not working
-//COOList DHMProcessor::volume_to_list(float *volume)
-//{
-//    int *d_x, *d_y, *d_s;
-//    float *d_v;
-//
-//    int *h_x, *h_y, *h_s;
-//    float *h_v;
-//
-//    // unified...
-//    CUDA_CHECK( cudaMalloc(&d_x, N*N*sizeof(int)) );
-//    CUDA_CHECK( cudaMalloc(&d_y, N*N*sizeof(int)) );
-//    CUDA_CHECK( cudaMalloc(&d_v, N*N*sizeof(float)) );
-//    CUDA_CHECK( cudaMalloc(&d_s, N*sizeof(int)) );
-//
-//    CUDA_CHECK( cudaMallocHost(&h_x, N*N*sizeof(int)) );
-//    CUDA_CHECK( cudaMallocHost(&h_y, N*N*sizeof(int)) );
-//    CUDA_CHECK( cudaMallocHost(&h_v, N*N*sizeof(float)) );
-//    CUDA_CHECK( cudaMallocHost(&h_s, N*sizeof(int)) );
-//
-//    std::vector<COOTuple> list;
-//
-//    for (int i = 0; i < NUM_SLICES; i++)
-//    {
-//        float *slice = volume + i*N*N;
-//        ops::_compact_rows<<<N, N>>>(slice, d_x, d_v, d_s, p);
-//
-//        // not needed w/ unified!
-//        CUDA_CHECK( cudaMemcpy(h_x, d_x, N*N*sizeof(int), cudaMemcpyDeviceToHost) );
-//        CUDA_CHECK( cudaMemcpy(h_y, d_y, N*N*sizeof(int), cudaMemcpyDeviceToHost) );
-//        CUDA_CHECK( cudaMemcpy(h_v, d_v, N*N*sizeof(float), cudaMemcpyDeviceToHost) );
-//        CUDA_CHECK( cudaMemcpy(h_s, d_s, N*sizeof(int), cudaMemcpyDeviceToHost) );
-//
-//        COOList row_list = rows_to_list(h_x, h_y, i, h_v, h_s);
-//
-//        list.insert(list.end(), row_list.begin(), row_list.end());
-//    }
-//
-//    // unified...
-//    CUDA_CHECK( cudaFree(d_x) );
-//    CUDA_CHECK( cudaFree(d_y) );
-//    CUDA_CHECK( cudaFree(d_v) );
-//    CUDA_CHECK( cudaFree(d_s) );
-//    CUDA_CHECK( cudaFreeHost(h_x) );
-//    CUDA_CHECK( cudaFreeHost(h_y) );
-//    CUDA_CHECK( cudaFreeHost(h_v) );
-//    CUDA_CHECK( cudaFreeHost(h_s) );
-//
-//    return list;
-//}
+        int *dCooRowIndA = *x + s;
+        int *dCsrColIndA = *y + s;
+        float *dCsrValA = *v + s;
 
+        // count nonzeros in slice
+        CUDA_CHECK( cusparseSnnz(handle, CUSPARSE_DIRECTION_ROW, m, n, descr, slice, m, dNnzPerRow, &nnz) );
+
+        // first get CSR matrix
+        CUDA_CHECK( cusparseSdense2csr(handle, m, n, descr, slice, m, dNnzPerRow,
+                                       dCsrValA, dCsrRowPtrA, dCsrColIndA) );
+
+        // then generate COO indices
+        CUDA_CHECK( cusparseXcsr2coo(handle, dCsrRowPtrA, nnz, m, dCooRowIndA, CUSPARSE_INDEX_BASE_ZERO) );
+
+        cudaDeviceSynchronize();
+
+        // generate Z indices
+        CUDA_CHECK( cudaFill(*z + s, k, nnz) );
+
+        s += nnz;
+    }
+
+    CUDA_CHECK( cudaFree(dNnzPerRow) );
+    CUDA_CHECK( cudaFree(dCsrRowPtrA) );
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // I/O ops
@@ -438,54 +324,81 @@ void DHMProcessor::load_image(std::string path)
 }
 
 // compress 3D volume to COO and save
-// not obvious how to use unified mem here - Thrust allocation rules it out?
+// this method is bad and slow, for a few reasons... consider as placeholder
 void DHMProcessor::save_volume(std::string path)
 {
-//    COOList list = volume_to_list(d_volume);
+    float *d_v;
+    int *d_x, *d_y, *d_z;
+    int nnz;
 
-    // cuda check
-    cusparseHandle_t cusparseHandle = 0;
-    CUDA_CHECK( cusparseCreate(&cusparseHandle) );
+    volume2sparse(handle, descr, d_volume, &d_x, N, &d_y, N, &d_z, NUM_SLICES, &d_v, &nnz);
 
-    cusparseMatDescr_t descr = 0;
-    CUDA_CHECK( cusparseCreateMatDescr(&descr) );
-
-    for (int i = 0; i < NUM_SLICES; i++)
-    {
-        float *slice = d_volume + i*N*N;
-        int s;
-        CUDA_CHECK( cusparseSnnz(cusparseHandle, CUSPARSE_DIRECTION_ROW, N, N, descr, slice, N, ???, &s) );
-        // sync cusparse
-    }
+    // transfer to host, unless on Tegra...
+    int *h_x, *h_y, *h_z;
+    float *h_v;
+    CUDA_CHECK( cudaMallocHost(&h_x, nnz*sizeof(int)) );
+    CUDA_CHECK( cudaMallocHost(&h_y, nnz*sizeof(int)) );
+    CUDA_CHECK( cudaMallocHost(&h_z, nnz*sizeof(int)) );
+    CUDA_CHECK( cudaMallocHost(&h_v, nnz*sizeof(float)) );
 
     std::ofstream f(path, std::ios::out | std::ios::binary);
-    f.write((char *)(list.data()), list.size()*sizeof(COOTuple));
+    f.write((char *)h_x, nnz*sizeof(int));
+    f.write((char *)h_y, nnz*sizeof(int));
+    f.write((char *)h_z, nnz*sizeof(int));
+    f.write((char *)h_v, nnz*sizeof(float));
     f.close();
+
+    CUDA_CHECK( cudaFreeHost(h_x) );
+    CUDA_CHECK( cudaFreeHost(h_y) );
+    CUDA_CHECK( cudaFreeHost(h_z) );
+    CUDA_CHECK( cudaFreeHost(h_v) );
 }
 
 void DHMProcessor::load_volume(std::string path, float *h_volume)
 {
-    std::ifstream f(path, std::ios::in | std::ios::binary | std::ios::ate);
+    std::ifstream f(path, std::ios::in | std::ios::binary);
 
-    int len = f.tellg();
+    f.seekg(0, f.end);
+    int nnz = f.tellg() / 4;
+    f.seekg(0, f.beg);
 
-    COOTuple *list = new COOTuple[len];
+    PRINT(nnz);
 
-    f.read((char *)list, len*sizeof(COOTuple));
-    f.close();
+    float *v = new float[nnz];
+    int *x = new int[nnz];
+    int *y = new int[nnz];
+    int *z = new int[nnz];
 
-    for (int i = 0; i < len; i++)
+    f.read((char *)x, nnz*sizeof(int));
+    f.read((char *)y, nnz*sizeof(int));
+    f.read((char *)z, nnz*sizeof(int));
+    f.read((char *)v, nnz*sizeof(float));
+
+    for (int i = 0; i < nnz; i++)
     {
-        COOTuple t = list[i];
-        h_volume[t.z*N*N+t.y*N+t.x] = t.v;
+        h_volume[z[i]*N*N+y[i]*N+x[i]] = v[i];
     }
 
-    delete[] list;
+    delete[] x;
+    delete[] y;
+    delete[] z;
+    delete[] v;
 }
 
+void DHMProcessor::display_image(byte *h_image)
+{
+    cv::Mat mat(N, N, CV_8U, h_image);
+    cv::imshow("Display window", mat);
+    cv::waitKey(0);
+}
 
-
-
-
-
-
+void DHMProcessor::display_volume(float *h_volume)
+{
+    for (int i = 0; i< NUM_SLICES; i++)
+    {
+        cv::Mat mat(N, N, CV_32F, h_volume + i*N*N);
+        cv::normalize(mat, mat, 1.0, 0.0, cv::NORM_MINMAX, -1);
+        cv::imshow("Display window", mat);
+        cv::waitKey(0);
+    }
+}

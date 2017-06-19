@@ -18,10 +18,10 @@
 #include <cstdlib>
 
 #include <cusparse_v2.h>
-
-#include "cufftXt.h"
+#include <cufftXt.h>
 
 #include "common.h"
+#include "util.cuh"
 
 ////////////////////////////////////////////////////////////////////////////////
 // Error handling
@@ -62,20 +62,6 @@ inline void _check_kernel(const char *const file, const int line) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Callback class for volume processing
-////////////////////////////////////////////////////////////////////////////////
-
-//class DHMCallback {
-//private:
-//    void (*_func)(float *, byte *, void *);
-//    void *_out, *_params;
-//
-//public:
-//    DHMCallback(void *, void (*)(float *, byte *, void *), void *);
-//    void operator()(float *, byte *);
-//};
-
-////////////////////////////////////////////////////////////////////////////////
 // Type definitions (i.e. for 16/32-bit precision)
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -93,34 +79,20 @@ typedef struct
 }  DHMParameters;
 
 ////////////////////////////////////////////////////////////////////////////////
-// CUDA timer
+// Callback class for volume processing
 ////////////////////////////////////////////////////////////////////////////////
 
-#define CUDA_TIMER( expr ) _cuda_timer(0, NULL); (expr); _cuda_timer(1, #expr);
-inline void _cuda_timer(const int state, const char *msg)
-{
-    static cudaEvent_t _timerStart, _timerStop;
+// TODO: function prototype is void callback(float *d_volume, float *d_mask)
+// for now I assume volume processing happens *in-place*, and takes *no extra handles or parameters*
 
-    if (state == 0)
-    {
-        cudaEventCreate(&_timerStart);
-        cudaEventCreate(&_timerStop);
-        cudaEventRecord(_timerStart);
-    }
-    else
-    {
-        float ms;
-        cudaEventRecord(_timerStop);
-        cudaEventSynchronize(_timerStop);
-        cudaEventElapsedTime(&ms, _timerStart, _timerStop);
-        std::cout << std::string(msg) << " took " << ms << "ms" << std::endl;
-        cudaError_t err = cudaGetLastError();
-        if (err)
-        {
-            std::cout << "Error code " << err << std::endl;
-        }
-        cudaEventDestroy(_timerStart);
-        cudaEventDestroy(_timerStop);
-        cudaDeviceSynchronize();
-    }
-}
+// idea here is that you can write a custom processing routine without needing to edit any of my stuff
+
+class DHMCallback {
+private:
+    void (*_func)(float *, byte *, DHMParameters);
+
+public:
+    DHMCallback();
+    DHMCallback(void (*)(float *, byte *, DHMParameters));
+    void operator()(float *, byte *, DHMParameters);
+};
