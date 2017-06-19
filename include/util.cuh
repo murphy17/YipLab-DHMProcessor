@@ -159,7 +159,9 @@ inline void _CUDA_PRINT(T *val, const char *func, const int line, const char *fi
 // Macros for showing image
 ////////////////////////////////////////////////////////////////////////////////
 
-#define SHOW(val, m, n) _SHOW(#val, (val), m, n)
+#define SHOW(val, m, n) _SHOW(#val, (val), m, n);
+#define CUDA_SHOW(val, m, n) _CUDA_SHOW(#val, (val), m, n);
+
 inline void _SHOW(const char* const name, unsigned char *x, int const m, int const n)
 {
     cv::Mat mat(m, n, CV_8U, x);
@@ -167,7 +169,6 @@ inline void _SHOW(const char* const name, unsigned char *x, int const m, int con
     cv::imshow(name, mat);
     cv::waitKey(0);
 }
-
 inline void _SHOW(const char* const name, float *x, int const m, int const n)
 {
     cv::Mat mat(m, n, CV_32F, x);
@@ -177,14 +178,13 @@ inline void _SHOW(const char* const name, float *x, int const m, int const n)
     cv::waitKey(0);
 }
 
-#define CUDA_SHOW(val, m, n) _CUDA_SHOW(#val, (val), m, n)
 template <typename T>
 inline void _CUDA_SHOW(const char* const name, T *x, int const m, int const n)
 {
-    T *y = new T[m*n];
-    cudaMemcpy(y, x, m*n*sizeof(T), cudaMemcpyDeviceToHost);
-    _SHOW(name, y, m, n);
-    delete[] y;
+    T *x_ = new T[m*n];
+    cudaMemcpy(x_, x, m*n*sizeof(T), cudaMemcpyDeviceToHost);
+    _SHOW(name, x_, m, n);
+    delete[] x_;
 }
 
 

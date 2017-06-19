@@ -101,8 +101,7 @@ DHMProcessor::DHMProcessor(std::string output_dir) {
     }
     catch (DHMException &e)
     {
-        std::cerr << e.what() << std::endl;
-        exit(-1);
+        HANDLE_ERROR(e);
     }
 }
 
@@ -131,8 +130,7 @@ DHMProcessor::~DHMProcessor() {
     }
     catch (DHMException &e)
     {
-        std::cerr << e.what() << std::endl;
-        exit(-1);
+        HANDLE_ERROR(e);
     }
 }
 
@@ -203,9 +201,6 @@ void DHMProcessor::process_folder(std::string input_dir) {
 //            for (int i = 0; i < NUM_SLICES; i++)
 //                CUDA_SHOW(d_volume + i*N*N, N, N);
 
-            for (int i = 0; i < NUM_SLICES; i++)
-                CUDA_SHOW(d_volume + i*N*N, N, N);
-
 //            std::string f_out = outputDir + "/" + f_in.substr(f_in.find_last_of("/") + 1) + ".bin";
 //            save_volume(f_out);
 //
@@ -219,15 +214,21 @@ void DHMProcessor::process_folder(std::string input_dir) {
     }
     catch (DHMException &e)
     {
-        std::cerr << e.what() << std::endl;
-        exit(-1);
+        HANDLE_ERROR(e);
     }
 }
 
 // will I expose the callback object or no?
 void DHMProcessor::set_callback(DHMCallback cb)
 {
-    callback = cb;
+    try
+    {
+        callback = cb;
+    }
+    catch (DHMException &e)
+    {
+        HANDLE_ERROR(e);
+    }
 }
 
 // this would be a CALLBACK (no - but part of one, load/store ops...)
@@ -280,8 +281,7 @@ void DHMProcessor::process_frame(bool use_camera)
     }
     catch (DHMException &e)
     {
-        std::cerr << e.what() << std::endl;
-        exit(-1);
+        HANDLE_ERROR(e);
     }
 }
 

@@ -2,6 +2,7 @@
  * ops.cu
  *
  * Tried to keep all the "business logic" in here
+ * ... i realize the organisation is a bit schizophrenic
  *
  *  Created on: Jun 14, 2017
  *      Author: michaelmurphy
