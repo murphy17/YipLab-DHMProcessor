@@ -64,7 +64,7 @@ private:
     void display_volume(float *);
 
     void load_image(std::string);
-    void process_frame(bool);
+    void process_frame();
     void save_volume(std::string);
 
     void load_volume(std::string, float*);

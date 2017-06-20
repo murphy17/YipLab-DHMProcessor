@@ -92,7 +92,8 @@ __global__ void _gen_filter_slice(complex *g, const float z, const DHMParameters
     r /= -2.f * z / p.LAMBDA0;
 
     // re(iz) = -im(z), im(iz) = re(z)
-    g[i*p.N+j] = {-im / r, re / r};
+    g[i*p.N+j].x = -im / r;
+    g[i*p.N+j].y = re / r;
 }
 
 void DHMProcessor::transfer_filter_async(complex *h_filter, complex *d_filter)
@@ -318,10 +319,6 @@ void DHMProcessor::load_image(std::string path)
     if (memory_kind == DHM_STANDARD_MEM)
     {
         CUDA_CHECK( cudaMemcpy(d_frame, h_frame, N*N*sizeof(byte), cudaMemcpyHostToDevice) );
-    }
-    else
-    {
-        CUDA_CHECK( cudaHostGetDevicePointer(&d_frame, h_frame, 0) );
     }
 }
 

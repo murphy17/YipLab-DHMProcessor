@@ -200,12 +200,36 @@ inline void _SHOW(const char* const name, float *x, int const m, int const n)
     cv::imshow(name, mat);
     cv::waitKey(0);
 }
-
-template <typename T>
-inline void _CUDA_SHOW(const char* const name, T *x, int const m, int const n)
+inline void _SHOW(const char* const name, float2 *x, int const m, int const n)
 {
-    T *x_ = new T[m*n];
-    cudaMemcpy(x_, x, m*n*sizeof(T), cudaMemcpyDeviceToHost);
+    cv::Mat mat(m, n, CV_32FC2, x);
+    cv::Mat planes[2];
+    cv::split(mat, planes);
+    cv::magnitude(planes[0], planes[1], planes[0]);
+    cv::normalize(planes[0], planes[0], 1.0, 0.0, cv::NORM_MINMAX, -1);
+    cv::namedWindow(name, CV_WINDOW_NORMAL);
+    cv::imshow(name, planes[0]);
+    cv::waitKey(0);
+}
+
+inline void _CUDA_SHOW(const char* const name, unsigned char *x, int const m, int const n)
+{
+    unsigned char *x_ = new unsigned char[m*n];
+    cudaMemcpy(x_, x, m*n*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+    _SHOW(name, x_, m, n);
+    delete[] x_;
+}
+inline void _CUDA_SHOW(const char* const name, float *x, int const m, int const n)
+{
+    float *x_ = new float[m*n];
+    cudaMemcpy(x_, x, m*n*sizeof(float), cudaMemcpyDeviceToHost);
+    _SHOW(name, x_, m, n);
+    delete[] x_;
+}
+inline void _CUDA_SHOW(const char* const name, float2 *x, int const m, int const n)
+{
+    float2 *x_ = new float2[m*n];
+    cudaMemcpy(x_, x, m*n*sizeof(float2), cudaMemcpyDeviceToHost);
     _SHOW(name, x_, m, n);
     delete[] x_;
 }

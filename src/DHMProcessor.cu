@@ -43,15 +43,27 @@ DHMProcessor::DHMProcessor(const int num_slices, const float delta_z, const floa
     this->z_init = z_init;
     this->memory_kind = memory_kind;
 
+    // allow unified memory
+    if (memory_kind == DHM_UNIFIED_MEM)
+        cudaSetDeviceFlags(cudaDeviceMapHost);
+
+
     // camera crap would go here...
 
+
     // pack parameters (for kernels)
-    p = { N, num_slices, DX, DY, delta_z, z_init, LAMBDA0 };
+    p.N = N;
+    p.num_slices = this->num_slices;
+    p.DX = DX;
+    p.DY = DY;
+    p.LAMBDA0 = LAMBDA0;
+    p.delta_z = this->delta_z;
+    p.z_init = this->z_init;
 
-    // allocate buffers, setup FFTs
-
+    // setup CUDA stream to run copying in background
     CUDA_CHECK( cudaStreamCreateWithFlags(&async_stream, cudaStreamNonBlocking) );
 
+    // setup CUFFT
     CUDA_CHECK( cufftCreate(&fft_plan) );
     CUDA_CHECK( cufftXtMakePlanMany(fft_plan, 2, fft_dims,
                                     NULL, 1, 0, fft_type,
@@ -60,23 +72,23 @@ DHMProcessor::DHMProcessor(const int num_slices, const float delta_z, const floa
 
     // only one quadrant stored on host -- point is to minimize transfer time
     CUDA_CHECK( cudaMallocHost(&h_filter, num_slices*(N/2+1)*(N/2+1)*sizeof(complex)) );
-    // double buffering
+    // double buffering on device, allows simultaneous copy and processing
     CUDA_CHECK( cudaMalloc(&d_filter[0], num_slices*N*N*sizeof(complex)) );
     CUDA_CHECK( cudaMalloc(&d_filter[1], num_slices*N*N*sizeof(complex)) );
-
+    // space for frame
     CUDA_CHECK( cudaMallocHost(&h_frame, N*N*sizeof(byte)) );
-    CUDA_CHECK( cudaMalloc(&d_frame, N*N*sizeof(byte)) );
-
+    if (memory_kind == DHM_STANDARD_MEM)
+        CUDA_CHECK( cudaMalloc(&d_frame, N*N*sizeof(byte)) );
+    else
+        CUDA_CHECK( cudaHostGetDevicePointer(&d_frame, h_frame, 0) );
+    // work space for FFT'ing image
     CUDA_CHECK( cudaMalloc(&d_image, N*N*sizeof(complex)) );
-
+    // end result in here
     CUDA_CHECK( cudaMalloc(&d_volume, num_slices*N*N*sizeof(float)) );
-
+    // masks to toggle processing of specific slices
+    // these need to be kept separate, even with unified memory
     CUDA_CHECK( cudaMallocHost(&h_mask, num_slices*sizeof(byte)) );
     CUDA_CHECK( cudaMalloc(&d_mask, num_slices*sizeof(byte)) );
-
-    // allow unified memory
-    if (memory_kind == DHM_UNIFIED_MEM)
-        cudaSetDeviceFlags(cudaDeviceMapHost);
 
     // setup sparse save - just proof of concept, this is really slow
     CUDA_CHECK( cusparseCreate(&handle) ); // this takes a long time, like 700ms
@@ -164,7 +176,7 @@ void DHMProcessor::process_folder(std::string input_dir, std::string output_dir)
     {
         load_image(f_in);
 
-        CUDA_TIMER( process_frame(false) ); // *this* triggers the volume processing callback
+        CUDA_TIMER( process_frame() ); // *this* triggers the volume processing callback
         // TODO: ... and shouldn't hand over control until it's done!
 
         // TODO: I *think* it's safe to move the callback outside...?
@@ -190,7 +202,7 @@ void DHMProcessor::set_callback(DHMCallback cb)
 }
 
 // this would be a CALLBACK (no - but part of one, load/store ops...)
-void DHMProcessor::process_frame(bool use_camera)
+void DHMProcessor::process_frame()
 {
     // start transferring filter quadrants to alternating buffer, for *next* frame
     // ... waiting for previous ops to finish first

@@ -59,7 +59,6 @@ void thr_cb(float *d_volume, byte *d_mask, DHMParameters p)
 {
     // just to make the matrix sparse
 
-    // deal with tomorrow
     for (int k = 0; k < p.num_slices; k++)
     {
         cv::cuda::GpuMat slice(p.N, p.N, CV_32F, d_volume + k*p.N*p.N);
@@ -67,8 +66,8 @@ void thr_cb(float *d_volume, byte *d_mask, DHMParameters p)
         cv::cuda::threshold(slice, slice, 0.25, 0.0, cv::THRESH_TOZERO_INV);
     }
 
-//    for (int k = 0; k < p.num_slices; k++)
-//        CUDA_SHOW(d_volume + k*p.N*p.N, p.N, p.N);
+    for (int k = 0; k < p.num_slices; k++)
+        CUDA_SHOW(d_volume + k*p.N*p.N, p.N, p.N);
 
     // ... and set the mask
     cv::cuda::GpuMat mask(p.num_slices, 1, CV_8U, d_mask);
@@ -89,7 +88,7 @@ int main(int argc, char* argv[])
     float delta_z = 1.0f;
     float z_init = 30.0f;
 
-    DHMProcessor dhm(num_slices, delta_z, z_init, DHM_UNIFIED_MEM);
+    DHMProcessor dhm(num_slices, delta_z, z_init, DHM_STANDARD_MEM);
 
     // TODO: allow callbacks to have state, i.e. with additional params
     // have an enum -- freq / time domain?
