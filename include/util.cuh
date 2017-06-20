@@ -10,6 +10,7 @@
 #include <string>
 #include <iostream>
 #include <vector>
+#include <chrono>
 
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
@@ -18,8 +19,8 @@
 // CUDA timer
 ////////////////////////////////////////////////////////////////////////////////
 
-#define CUDA_TIMER( expr ) _cuda_timer(0, NULL); (expr); _cuda_timer(1, #expr);
-inline void _cuda_timer(const int state, const char *msg)
+#define CUDA_TIMER( expr ) _CUDA_TIMER(0, NULL); (expr); _CUDA_TIMER(1, #expr);
+inline void _CUDA_TIMER(const int state, const char *msg)
 {
     static std::vector<cudaEvent_t> start, stop;
 
@@ -49,6 +50,26 @@ inline void _cuda_timer(const int state, const char *msg)
         start.pop_back();
         stop.pop_back();
         cudaDeviceSynchronize();
+    }
+}
+
+#define TIMER( expr ) _TIMER(0, NULL); (expr); _TIMER(1, #expr);
+inline void _TIMER(const int state, const char *msg)
+{
+    using namespace std::chrono;
+
+    static std::vector<high_resolution_clock::time_point> start;
+
+    if (state == 0)
+    {
+        start.push_back(high_resolution_clock::now());
+    }
+    else
+    {
+        high_resolution_clock::time_point stop = high_resolution_clock::now();
+        float ms = duration_cast<duration<float>>(stop-start.back()).count() * 1000;
+        std::cout << std::string(msg) << " took " << ms << "ms" << std::endl;
+        start.pop_back();
     }
 }
 

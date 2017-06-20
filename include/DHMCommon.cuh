@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <vector>
 #include <cstdlib>
+#include <future>
 
 #include <cusparse_v2.h>
 #include <cufftXt.h>
@@ -35,6 +36,7 @@ public:
 
     DHMException(const char *msg, const char *const file, int const line) {
         this->msg =  "DHM exception at line " + std::to_string(line) + " in " + file + ": " + msg;
+        std::cerr << msg << std::endl;
     }
 
     const char* what() const throw() {
@@ -60,8 +62,6 @@ inline void _check_kernel(const char *const file, const int line) {
         throw DHMException(_cudaGetErrorEnum(err), file, line);
     }
 }
-
-#define HANDLE_ERROR(err) std::cerr << err.what() << std::endl; exit(-1);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Type definitions (i.e. for 16/32-bit precision)

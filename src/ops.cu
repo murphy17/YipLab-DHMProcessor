@@ -298,6 +298,8 @@ void volume2sparse(const cusparseHandle_t handle, const cusparseMatDescr_t descr
 
     CUDA_CHECK( cudaFree(dNnzPerRow) );
     CUDA_CHECK( cudaFree(dCsrRowPtrA) );
+
+    cudaDeviceSynchronize();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -324,7 +326,7 @@ void DHMProcessor::load_image(std::string path)
     }
 }
 
-// compress 3D volume to COO and save
+// compress 3D volume to COO and save, using separate thread to do disk write
 // this method is bad and slow, for a few reasons... consider as placeholder
 void DHMProcessor::save_volume(std::string path)
 {
@@ -332,27 +334,34 @@ void DHMProcessor::save_volume(std::string path)
     int *d_x, *d_y, *d_z;
     int nnz;
 
+//    static std::shared_future<void> write_task;
+//    static bool write_task_ready;
+
+//    if (write_task_ready)
+//        write_task.wait();
+
     volume2sparse(handle, descr, d_volume, &d_x, N, &d_y, N, &d_z, NUM_SLICES, &d_v, &nnz);
 
-    // transfer to host, unless on Tegra...
-    int *h_x, *h_y, *h_z;
-    float *h_v;
-    CUDA_CHECK( cudaMallocHost(&h_x, nnz*sizeof(int)) );
-    CUDA_CHECK( cudaMallocHost(&h_y, nnz*sizeof(int)) );
-    CUDA_CHECK( cudaMallocHost(&h_z, nnz*sizeof(int)) );
-    CUDA_CHECK( cudaMallocHost(&h_v, nnz*sizeof(float)) );
+//    if (!write_task_ready)
+//    {
+//        write_task = std::shared_future<void>(std::async(std::launch::async, [&]() {
+    char *buffer = new char[nnz*(3*sizeof(int)+sizeof(float))];
+
+    CUDA_CHECK( cudaMemcpy(buffer, d_x, nnz*sizeof(int), cudaMemcpyDeviceToHost) );
+    CUDA_CHECK( cudaMemcpy(buffer + nnz*sizeof(int), d_y, nnz*sizeof(int), cudaMemcpyDeviceToHost) );
+    CUDA_CHECK( cudaMemcpy(buffer + 2*nnz*sizeof(int), d_z, nnz*sizeof(int), cudaMemcpyDeviceToHost) );
+    CUDA_CHECK( cudaMemcpy(buffer + 3*nnz*sizeof(int), d_v, nnz*sizeof(float), cudaMemcpyDeviceToHost) );
 
     std::ofstream f(path, std::ios::out | std::ios::binary);
-    f.write((char *)h_x, nnz*sizeof(int));
-    f.write((char *)h_y, nnz*sizeof(int));
-    f.write((char *)h_z, nnz*sizeof(int));
-    f.write((char *)h_v, nnz*sizeof(float));
+    f.write(buffer, 4*nnz*sizeof(int));
     f.close();
 
-    CUDA_CHECK( cudaFreeHost(h_x) );
-    CUDA_CHECK( cudaFreeHost(h_y) );
-    CUDA_CHECK( cudaFreeHost(h_z) );
-    CUDA_CHECK( cudaFreeHost(h_v) );
+    delete[] buffer;
+//        }));
+//        write_task_ready = true;
+//    }
+//
+//    write_task.get();
 }
 
 void DHMProcessor::load_volume(std::string path, float *h_volume)
@@ -360,10 +369,8 @@ void DHMProcessor::load_volume(std::string path, float *h_volume)
     std::ifstream f(path, std::ios::in | std::ios::binary);
 
     f.seekg(0, f.end);
-    int nnz = f.tellg() / 4;
+    int nnz = f.tellg() / (4 * sizeof(int));
     f.seekg(0, f.beg);
-
-    PRINT(nnz);
 
     float *v = new float[nnz];
     int *x = new int[nnz];
@@ -389,6 +396,7 @@ void DHMProcessor::load_volume(std::string path, float *h_volume)
 void DHMProcessor::display_image(byte *h_image)
 {
     cv::Mat mat(N, N, CV_8U, h_image);
+    cv::namedWindow("Display window", CV_WINDOW_NORMAL);
     cv::imshow("Display window", mat);
     cv::waitKey(0);
 }
@@ -399,7 +407,30 @@ void DHMProcessor::display_volume(float *h_volume)
     {
         cv::Mat mat(N, N, CV_32F, h_volume + i*N*N);
         cv::normalize(mat, mat, 1.0, 0.0, cv::NORM_MINMAX, -1);
+        cv::namedWindow("Display window", CV_WINDOW_NORMAL);
         cv::imshow("Display window", mat);
         cv::waitKey(0);
     }
+}
+
+// returns an iterator through a folder in alphabetical order, optionally filtering by extension
+std::vector<std::string> iter_folder(std::string path, std::string ext = "")
+{
+    using namespace boost::filesystem;
+
+    if ( !exists(path) || !is_directory(path) ) DHM_ERROR("Input directory not found");
+
+    // loop thru bitmap files in input folder
+    // ... these would probably be a video ...
+    std::vector<std::string> dir;
+    for (auto &i : boost::make_iterator_range(directory_iterator(path), {})) {
+        std::string f = i.path().string();
+        if (ext.length() > 0 && f.substr(f.find_last_of(".") + 1) == ext)
+            dir.push_back(f);
+    }
+    std::sort(dir.begin(), dir.end());
+
+    if ( dir.size() == 0 ) DHM_ERROR("No matching files found");
+
+    return dir;
 }

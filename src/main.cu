@@ -8,15 +8,20 @@
 #include "DHMProcessor.cuh"
 
 #include <opencv2/opencv.hpp>
+#include <opencv2/cudaarithm.hpp>
 #include <opencv2/cudafilters.hpp>
 
-#include "callback.cu"
+// TODO: clean up file organization, it's convoluted
+
+////////////////////////////////////////////////////////////////////////////////
+// Examples of user-provided callbacks
+////////////////////////////////////////////////////////////////////////////////
 
 // TODO: being able to operate on the slices in Fourier domain would be nice...
 // ... two callbacks would be easiest thing to do here, before/after FFT+mod
 void cb_func(float *d_volume, byte *d_mask, DHMParameters p)
 {
-    // some example processing, in pure OpenCV. note this is quite slow...
+    // some example processing, in pure OpenCV. note this is *quite* slow...
 
     using namespace cv::cuda;
     using namespace cv;
@@ -25,8 +30,8 @@ void cb_func(float *d_volume, byte *d_mask, DHMParameters p)
 
     for (int k = 0; k < p.NUM_SLICES; k++)
     {
-        GpuMat volume(p.N, p.N, CV_32F, d_volume + k*p.N*p.N);
-        gaussian->apply(volume, volume);
+        GpuMat slice(p.N, p.N, CV_32F, d_volume + k*p.N*p.N);
+        gaussian->apply(slice, slice);
     }
 
     // ... and set the mask
@@ -43,21 +48,62 @@ void show_cb(float *d_volume, byte *d_mask, DHMParameters p)
     CUDA_CHECK( cudaMemset(d_mask, 1, p.NUM_SLICES) );
 }
 
+void id_cb(float *d_volume, byte *d_mask, DHMParameters p)
+{
+    CUDA_CHECK( cudaMemset(d_mask, 1, p.NUM_SLICES) );
+}
+
+void thr_cb(float *d_volume, byte *d_mask, DHMParameters p)
+{
+    // just to make the matrix sparse
+
+    // deal with tomorrow
+    for (int k = 0; k < p.NUM_SLICES; k++)
+    {
+        cv::cuda::GpuMat slice(p.N, p.N, CV_32F, d_volume + k*p.N*p.N);
+        cv::cuda::normalize(slice, slice, 1.0, 0.0, cv::NORM_MINMAX, -1);
+        cv::cuda::threshold(slice, slice, 0.25, 0.0, cv::THRESH_TOZERO_INV);
+    }
+
+//    for (int k = 0; k < p.NUM_SLICES; k++)
+//        CUDA_SHOW(d_volume + k*p.N*p.N, p.N, p.N);
+
+    // ... and set the mask
+    cv::cuda::GpuMat mask(p.NUM_SLICES, 1, CV_8U, d_mask);
+    mask.setTo(cv::Scalar_<unsigned char>(1));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Example usage - folder
+////////////////////////////////////////////////////////////////////////////////
+
 int main(int argc, char* argv[])
 {
     using namespace std;
 
-    string input_dir = argc == 1 ? "../test/input" : string(argv[1]);
+    string output_dir = "../test/output";
 
-    DHMProcessor dhm("../test/output");
+    // TODO: take in some scientific / experimental parameters via constructor
+    DHMProcessor dhm(output_dir);
 
+    // TODO: allow callbacks to have state, i.e. with additional params
     // have an enum -- freq / time domain?
     // the former doesn't take the mask though...
-    dhm.set_callback(DHMCallback(show_cb)); // DHM_BEFORE_FFT, DHM_AFTER_FFT
+    dhm.set_callback(DHMCallback(thr_cb)); // DHM_BEFORE_FFT, DHM_AFTER_FFT
 
-    dhm.process_folder(input_dir);
+    dhm.process_folder("../test/input");
+
+    for (std::string &f_in : iter_folder(output_dir, "bin"))
+    {
+        std::cout << f_in << std::endl;
+        dhm.view_volume(f_in);
+    }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Example usage - camera
+////////////////////////////////////////////////////////////////////////////////
 
-
+// TODO
+// micromanager would be great too
 

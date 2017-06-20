@@ -31,7 +31,7 @@ private:
     // experimental parameters
 
 //    std::string inputDir;
-    std::string outputDir;
+    std::string output_dir;
 
     static const bool UNIFIED_MEM = false; // Jetson
 
@@ -82,6 +82,8 @@ public:
 
     void process_camera();
     void process_folder(std::string);
+
+    void view_volume(std::string);
 
     // should this be in constructor?
     void set_callback(DHMCallback);
