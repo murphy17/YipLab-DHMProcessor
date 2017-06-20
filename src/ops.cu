@@ -116,7 +116,8 @@ void DHMProcessor::transfer_filter_async(complex *h_filter, complex *d_filter)
     CUDA_CHECK( cudaMemcpy3DAsync(&q, async_stream) );
 }
 
-void DHMProcessor::gen_filter_quadrant(complex *h_filter) {
+void DHMProcessor::build_filter()
+{
     complex *slice;
     CUDA_CHECK( cudaMalloc(&slice, N*N*sizeof(complex)) );
 
@@ -368,6 +369,8 @@ void DHMProcessor::load_volume(std::string path, float *h_volume)
     int nnz = f.tellg() / (4 * sizeof(int));
     f.seekg(0, f.beg);
 
+    if (nnz == 0) DHM_ERROR("Empty file");
+
     float *v = new float[nnz];
     int *x = new int[nnz];
     int *y = new int[nnz];
@@ -408,6 +411,11 @@ void DHMProcessor::display_volume(float *h_volume)
         cv::waitKey(0);
     }
 }
+
+//void DHMProcessor::acquire_frame(std::string output_dir)
+//{
+//
+//}
 
 // returns an iterator through a folder in alphabetical order, optionally filtering by extension
 std::vector<std::string> iter_folder(std::string path, std::string ext = "")

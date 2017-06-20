@@ -15,7 +15,11 @@ namespace YipLab {
 class DHMProcessor
 {
 private:
-    void gen_filter_quadrant(complex *);
+    void setup_cuda();
+    void cleanup_cuda();
+
+    void build_filter_stack();
+
     void transfer_filter_async(complex *, complex *);
     void save_image(const byte *);
     void convert_image(const byte *, complex *);
@@ -34,8 +38,6 @@ private:
 
     DHMParameters p;
     DHMCallback callback;
-
-    cv::VideoWriter writer;
 
     // CUDA stuff
 

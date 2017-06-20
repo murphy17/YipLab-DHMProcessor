@@ -42,11 +42,10 @@ public:
 
     DHMException(const char *msg, const char *const file, int const line) {
         this->msg =  "DHM exception at line " + std::to_string(line) + " in " + file + ": " + msg;
-        std::cerr << msg << std::endl;
+        cudaDeviceReset();
     }
 
     const char* what() const throw() {
-        cudaDeviceReset();
         return msg.c_str();
     }
 };

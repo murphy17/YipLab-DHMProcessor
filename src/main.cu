@@ -88,20 +88,22 @@ int main(int argc, char* argv[])
     float delta_z = 1.0f;
     float z_init = 30.0f;
 
-    DHMProcessor dhm(num_slices, delta_z, z_init, DHM_STANDARD_MEM);
+    DHMProcessor dhm(num_slices, delta_z, z_init, DHM_UNIFIED_MEM);
 
     // TODO: allow callbacks to have state, i.e. with additional params
     // have an enum -- freq / time domain?
     // the former doesn't take the mask though...
-    dhm.set_callback(DHMCallback(thr_cb)); // DHM_BEFORE_FFT, DHM_AFTER_FFT
+    dhm.set_callback(DHMCallback(id_cb)); // DHM_BEFORE_FFT, DHM_AFTER_FFT
 
     dhm.process_folder(input_dir, output_dir);
 
-    for (std::string &f_in : iter_folder(output_dir, "bin"))
-    {
-        std::cout << f_in << std::endl;
-        dhm.view_volume(f_in);
-    }
+//    dhm.process_camera(ueye, output_dir);
+
+//    for (std::string &f_in : iter_folder(output_dir, "bin"))
+//    {
+//        std::cout << f_in << std::endl;
+//        dhm.view_volume(f_in);
+//    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

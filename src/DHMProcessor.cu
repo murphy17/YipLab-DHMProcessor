@@ -36,20 +36,15 @@ DHMProcessor::DHMProcessor(const int num_slices, const float delta_z, const floa
 {
     if (is_initialized) DHM_ERROR("Only a single instance of DHMProcessor is permitted");
 
-    CUDA_CHECK( cudaDeviceReset() );
-
     this->num_slices = num_slices;
     this->delta_z = delta_z;
     this->z_init = z_init;
     this->memory_kind = memory_kind;
 
-    // allow unified memory
-    if (memory_kind == DHM_UNIFIED_MEM)
-        cudaSetDeviceFlags(cudaDeviceMapHost);
-
-
     // camera crap would go here...
 
+    // allocate various buffers / handles
+    setup_cuda();
 
     // pack parameters (for kernels)
     p.N = N;
@@ -59,6 +54,34 @@ DHMProcessor::DHMProcessor(const int num_slices, const float delta_z, const floa
     p.LAMBDA0 = LAMBDA0;
     p.delta_z = this->delta_z;
     p.z_init = this->z_init;
+
+    // construct filter stack once
+    build_filter_stack();
+
+    // copy to GPU in preparation for first frame
+    buffer_pos = 0;
+    transfer_filter_async(h_filter, d_filter[buffer_pos]);
+    CUDA_CHECK( cudaStreamSynchronize(async_stream) );
+
+    // initially query all slices
+    memset(h_mask, 1, num_slices);
+    CUDA_CHECK( cudaMemcpy(d_mask, h_mask, num_slices*sizeof(byte), cudaMemcpyHostToDevice) );
+
+    is_initialized = true;
+}
+
+DHMProcessor::~DHMProcessor() {
+    cleanup_cuda();
+
+    is_initialized = false;
+}
+
+void DHMProcessor::setup_cuda() {
+    CUDA_CHECK( cudaDeviceReset() );
+
+    // allow unified memory
+    if (memory_kind == DHM_UNIFIED_MEM)
+        CUDA_CHECK( cudaSetDeviceFlags(cudaDeviceMapHost) );
 
     // setup CUDA stream to run copying in background
     CUDA_CHECK( cudaStreamCreateWithFlags(&async_stream, cudaStreamNonBlocking) );
@@ -91,26 +114,14 @@ DHMProcessor::DHMProcessor(const int num_slices, const float delta_z, const floa
     CUDA_CHECK( cudaMalloc(&d_mask, num_slices*sizeof(byte)) );
 
     // setup sparse save - just proof of concept, this is really slow
-    CUDA_CHECK( cusparseCreate(&handle) ); // this takes a long time, like 700ms
+    CUDA_CHECK( cusparseCreate(&handle) );
     CUDA_CHECK( cusparseCreateMatDescr(&descr) );
     CUDA_CHECK( cusparseSetMatType(descr, CUSPARSE_MATRIX_TYPE_GENERAL) );
     CUDA_CHECK( cusparseSetMatIndexBase(descr, CUSPARSE_INDEX_BASE_ZERO) );
-
-    // construct filter stack, keep on host
-    gen_filter_quadrant(h_filter);
-
-    // copy to GPU in preparation for first frame
-    buffer_pos = 0;
-    transfer_filter_async(h_filter, d_filter[buffer_pos]);
-    CUDA_CHECK( cudaStreamSynchronize(async_stream) );
-    // initially query all slices
-    memset(h_mask, 1, num_slices);
-    CUDA_CHECK( cudaMemcpy(d_mask, h_mask, num_slices*sizeof(byte), cudaMemcpyHostToDevice) );
-
-    is_initialized = true;
 }
 
-DHMProcessor::~DHMProcessor() {
+void cleanup_cuda()
+{
     CUDA_CHECK( cusparseDestroyMatDescr(descr) );
     CUDA_CHECK( cusparseDestroy(handle) );
 
@@ -124,12 +135,11 @@ DHMProcessor::~DHMProcessor() {
 
     CUDA_CHECK( cudaFree(d_filter[0]) );
     CUDA_CHECK( cudaFree(d_filter[1]) );
-    CUDA_CHECK( cudaFree(d_frame) );
+    if (memory_kind == DHM_STANDARD_MEM)
+        CUDA_CHECK( cudaFree(d_frame) );
     CUDA_CHECK( cudaFree(d_volume) );
     CUDA_CHECK( cudaFree(d_mask) );
     CUDA_CHECK( cudaFree(d_image) );
-
-    is_initialized = false;
 }
 
 /*
@@ -184,12 +194,7 @@ void DHMProcessor::process_folder(std::string input_dir, std::string output_dir)
         // ... don't do that if you will have multiple callbacks at diff stages
 
         std::string f_out = output_dir + "/" + f_in.substr(f_in.find_last_of("/") + 1) + ".bin";
-        CUDA_TIMER( save_volume(f_out) );
-
-//        float *h_volume = new float[N*N*num_slices];
-//        load_volume(f_out, h_volume);
-//        display_volume(h_volume);
-//        delete[] h_volume;
+//        CUDA_TIMER( save_volume(f_out) );
 
         // write volume to disk... what format? HDF5?
     }
