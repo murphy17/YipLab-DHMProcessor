@@ -101,11 +101,11 @@ int main(int argc, char* argv[])
 
 //    dhm.process_camera(ueye, output_dir);
 
-//    for (std::string &f_in : iter_folder(output_dir, "bin"))
-//    {
-//        std::cout << f_in << std::endl;
-//        dhm.view_volume(f_in);
-//    }
+    for (std::string &f_in : iter_folder(output_dir, "bin"))
+    {
+        std::cout << f_in << std::endl;
+        dhm.view_volume(f_in);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

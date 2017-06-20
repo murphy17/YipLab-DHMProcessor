@@ -16,7 +16,7 @@
 #include <algorithm>
 #include <vector>
 #include <cstdlib>
-#include <future>
+#include <thread>
 
 #include <cusparse_v2.h>
 #include <cufftXt.h>

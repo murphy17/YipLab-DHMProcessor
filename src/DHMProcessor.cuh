@@ -40,6 +40,7 @@ private:
     void display_image(byte *);
     void display_volume(float *);
     void load_image(std::string);
+    void save_image(std::string);
     void process_frame();
     void save_volume(std::string);
     void load_volume(std::string, float*);
@@ -55,6 +56,7 @@ private:
     static bool is_initialized; // singleton
     DHMParameters params;
     DHMCallback callback;
+    // std::thread save_thread;
 
     // CUDA handles
     byte *h_frame, *h_mask, *d_frame, *d_mask;

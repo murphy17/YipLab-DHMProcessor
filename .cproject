@@ -22,7 +22,7 @@
 						<toolChain id="com.nvidia.cuda.tools.toolchain.eight_zero.exe.debug.1412781897" name="CUDA Toolkit 8.0" superClass="com.nvidia.cuda.tools.toolchain.eight_zero.exe.debug">
 							<targetPlatform archList="all" binaryParser="com.nvidia.cuda.ide.elf;com.nvidia.cuda.ide.macho;com.nvidia.cuda.ide.cubin" id="com.nvidia.cuda.ide.targetPlatform.457326002" isAbstract="false" name="Debug Platform" osList="linux,macosx" superClass="com.nvidia.cuda.ide.targetPlatform"/>
 							<builder buildPath="${workspace_loc:/DHMProcessor}/Debug" id="com.nvidia.cuda.ide.builder.1580022715" keepEnvironmentInBuildfile="false" managedBuildOn="true" name="CUDA Toolkit 8.0 Builder" parallelBuildOn="true" parallelizationNumber="optimal" superClass="com.nvidia.cuda.ide.builder"/>
-							<tool id="nvcc.compiler.base.734669753" name="NVCC Compiler" superClass="nvcc.compiler.base">
+							<tool commandLinePattern="${COMMAND} ${FLAGS} ${OUTPUT_FLAG} ${OUTPUT_PREFIX} ${OUTPUT} ${INPUTS}" id="nvcc.compiler.base.734669753" name="NVCC Compiler" superClass="nvcc.compiler.base">
 								<option id="nvcc.compiler.deviceDebug.963402890" name="Generate device debug information (-G)" superClass="nvcc.compiler.deviceDebug" value="false" valueType="boolean"/>
 								<option id="nvcc.compiler.option.level.1380038396" name="Generate host debug information (-g)" superClass="nvcc.compiler.option.level" value="false" valueType="boolean"/>
 								<option defaultValue="nvcc.compiler.optimization.level.none" id="nvcc.compiler.optimization.level.356659386" name="Optimization Level" superClass="nvcc.compiler.optimization.level" value="nvcc.compiler.optimization.level.most" valueType="enumerated"/>
@@ -44,9 +44,10 @@
 								<inputType id="nvcc.compiler.input.cpp.40618438" superClass="nvcc.compiler.input.cpp"/>
 								<inputType id="nvcc.compiler.input.c.466329070" superClass="nvcc.compiler.input.c"/>
 							</tool>
-							<tool id="nvcc.linker.base.101957943" name="NVCC Linker" superClass="nvcc.linker.base">
+							<tool commandLinePattern="${COMMAND} ${FLAGS} ${OUTPUT_FLAG} ${OUTPUT_PREFIX} ${OUTPUT} ${INPUTS}" id="nvcc.linker.base.101957943" name="NVCC Linker" superClass="nvcc.linker.base">
 								<option id="nvcc.linker.option.libs.1694686809" name="Libraries (-l)" superClass="nvcc.linker.option.libs" valueType="libs">
 									<listOptionValue builtIn="false" value="opencv_core"/>
+									<listOptionValue builtIn="false" value="pthread"/>
 									<listOptionValue builtIn="false" value="opencv_cudaimgproc"/>
 									<listOptionValue builtIn="false" value="opencv_cudafilters"/>
 									<listOptionValue builtIn="false" value="opencv_cudaarithm"/>
@@ -60,6 +61,7 @@
 									<listOptionValue builtIn="false" value="cufft"/>
 									<listOptionValue builtIn="false" value="opencv_imgcodecs"/>
 								</option>
+								<option id="nvcc.linker.option.other.668167005" name="Other options (-Xlinker [option])" superClass="nvcc.linker.option.other" valueType="stringList"/>
 								<inputType id="nvcc.linker.input.1123372976" superClass="nvcc.linker.input">
 									<additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
 									<additionalInput kind="additionalinput" paths="$(LIBS)"/>
