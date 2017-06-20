@@ -96,34 +96,14 @@ __global__ void _gen_filter_slice(complex *g, const float z, const DHMParameters
     g[i*p.N+j].y = re / r;
 }
 
-void DHMProcessor::transfer_filter_async(complex *h_filter, complex *d_filter)
-{
-    // generate parameters for 3D copy
-    cudaMemcpy3DParms q = { 0 };
-    q.srcPtr.ptr = h_filter;
-    q.srcPtr.pitch = (N/2+1) * sizeof(complex);
-    q.srcPtr.xsize = (N/2+1);
-    q.srcPtr.ysize = (N/2+1);
-    q.dstPtr.ptr = d_filter;
-    q.dstPtr.pitch = N * sizeof(complex);
-    q.dstPtr.xsize = N;
-    q.dstPtr.ysize = N;
-    q.extent.width = (N/2+1) * sizeof(complex);
-    q.extent.height = (N/2+1);
-    q.extent.depth = num_slices;
-    q.kind = cudaMemcpyHostToDevice;
-
-    CUDA_CHECK( cudaMemcpy3DAsync(&q, async_stream) );
-}
-
-void DHMProcessor::build_filter()
+void DHMProcessor::build_filter_stack()
 {
     complex *slice;
     CUDA_CHECK( cudaMalloc(&slice, N*N*sizeof(complex)) );
 
     for (int i = 0; i < num_slices; i++)
     {
-        _gen_filter_slice<<<N, N>>>(slice, z_init + i * delta_z, p);
+        _gen_filter_slice<<<N, N>>>(slice, z_init + i * delta_z, params);
         KERNEL_CHECK();
 
         // FFT in-place
@@ -144,6 +124,12 @@ void DHMProcessor::build_filter()
             cudaMemcpyDeviceToHost
         ) );
     }
+
+    // do a 3D copy to buffer for first frame
+    // 3D allows transferring only a single quadrant
+    cudaMemcpy3DParms p = memcpy3d_params;
+    p.dstPtr.ptr = d_filter[0];
+    CUDA_CHECK( cudaMemcpy3D(&p) );
 
     CUDA_CHECK( cudaFree(slice) );
 }
@@ -417,12 +403,29 @@ void DHMProcessor::display_volume(float *h_volume)
 //
 //}
 
+// make sure the input directory exists, and resolve any symlinks
+std::string check_dir(std::string path)
+{
+    using namespace boost::filesystem;
+
+    if (path[0] == '~')
+    {
+        path = std::string(std::getenv("HOME")) + path.substr(1, path.size()-1);
+    }
+
+    path = canonical(path).string(); // resolve symlinks
+
+    if ( !exists(path) || !is_directory(path) ) DHM_ERROR("Input directory not found");
+
+    return path;
+}
+
 // returns an iterator through a folder in alphabetical order, optionally filtering by extension
 std::vector<std::string> iter_folder(std::string path, std::string ext = "")
 {
     using namespace boost::filesystem;
 
-    if ( !exists(path) || !is_directory(path) ) DHM_ERROR("Input directory not found");
+    path = check_dir(path);
 
     // loop thru bitmap files in input folder
     // ... these would probably be a video ...

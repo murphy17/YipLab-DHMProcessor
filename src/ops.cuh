@@ -24,4 +24,6 @@ __global__ void _quad_mul(complex*, const complex*, const byte*, const DHMParame
 
 std::vector<std::string> iter_folder(std::string, std::string);
 
+std::string check_dir(std::string);
+
 }

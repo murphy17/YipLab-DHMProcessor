@@ -66,8 +66,8 @@ void thr_cb(float *d_volume, byte *d_mask, DHMParameters p)
         cv::cuda::threshold(slice, slice, 0.25, 0.0, cv::THRESH_TOZERO_INV);
     }
 
-    for (int k = 0; k < p.num_slices; k++)
-        CUDA_SHOW(d_volume + k*p.N*p.N, p.N, p.N);
+//    for (int k = 0; k < p.num_slices; k++)
+//        CUDA_SHOW(d_volume + k*p.N*p.N, p.N, p.N);
 
     // ... and set the mask
     cv::cuda::GpuMat mask(p.num_slices, 1, CV_8U, d_mask);
@@ -82,8 +82,8 @@ int main(int argc, char* argv[])
 {
     using namespace std;
 
-    string input_dir = "../test/input";
-    string output_dir = "../test/output";
+    string input_dir = "../test";
+    string output_dir = "~/image_store/Murphy_Michael/dhm";
     int num_slices = 100;
     float delta_z = 1.0f;
     float z_init = 30.0f;
@@ -93,17 +93,19 @@ int main(int argc, char* argv[])
     // TODO: allow callbacks to have state, i.e. with additional params
     // have an enum -- freq / time domain?
     // the former doesn't take the mask though...
-    dhm.set_callback(DHMCallback(id_cb)); // DHM_BEFORE_FFT, DHM_AFTER_FFT
+    dhm.set_callback(DHMCallback(thr_cb)); // DHM_BEFORE_FFT, DHM_AFTER_FFT
 
     dhm.process_folder(input_dir, output_dir);
 
+    // process camera one-at-a-time vs process camera "fully automatic"
+
 //    dhm.process_camera(ueye, output_dir);
 
-//    for (std::string &f_in : iter_folder(output_dir, "bin"))
-//    {
-//        std::cout << f_in << std::endl;
-//        dhm.view_volume(f_in);
-//    }
+    for (std::string &f_in : iter_folder(output_dir, "bin"))
+    {
+        std::cout << f_in << std::endl;
+        dhm.view_volume(f_in);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

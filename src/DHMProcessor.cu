@@ -47,21 +47,16 @@ DHMProcessor::DHMProcessor(const int num_slices, const float delta_z, const floa
     setup_cuda();
 
     // pack parameters (for kernels)
-    p.N = N;
-    p.num_slices = this->num_slices;
-    p.DX = DX;
-    p.DY = DY;
-    p.LAMBDA0 = LAMBDA0;
-    p.delta_z = this->delta_z;
-    p.z_init = this->z_init;
+    params.N = N;
+    params.num_slices = this->num_slices;
+    params.DX = DX;
+    params.DY = DY;
+    params.LAMBDA0 = LAMBDA0;
+    params.delta_z = this->delta_z;
+    params.z_init = this->z_init;
 
-    // construct filter stack once
+    // construct filter stack once - gets transferred to GPU in here
     build_filter_stack();
-
-    // copy to GPU in preparation for first frame
-    buffer_pos = 0;
-    transfer_filter_async(h_filter, d_filter[buffer_pos]);
-    CUDA_CHECK( cudaStreamSynchronize(async_stream) );
 
     // initially query all slices
     memset(h_mask, 1, num_slices);
@@ -98,6 +93,7 @@ void DHMProcessor::setup_cuda() {
     // double buffering on device, allows simultaneous copy and processing
     CUDA_CHECK( cudaMalloc(&d_filter[0], num_slices*N*N*sizeof(complex)) );
     CUDA_CHECK( cudaMalloc(&d_filter[1], num_slices*N*N*sizeof(complex)) );
+    buffer_pos = 0;
     // space for frame
     CUDA_CHECK( cudaMallocHost(&h_frame, N*N*sizeof(byte)) );
     if (memory_kind == DHM_STANDARD_MEM)
@@ -118,9 +114,24 @@ void DHMProcessor::setup_cuda() {
     CUDA_CHECK( cusparseCreateMatDescr(&descr) );
     CUDA_CHECK( cusparseSetMatType(descr, CUSPARSE_MATRIX_TYPE_GENERAL) );
     CUDA_CHECK( cusparseSetMatIndexBase(descr, CUSPARSE_INDEX_BASE_ZERO) );
+
+    // generate parameters for filter quadrant copy
+    memcpy3d_params = { 0 };
+    memcpy3d_params.srcPtr.ptr = h_filter;
+    memcpy3d_params.srcPtr.pitch = (N/2+1) * sizeof(complex);
+    memcpy3d_params.srcPtr.xsize = (N/2+1);
+    memcpy3d_params.srcPtr.ysize = (N/2+1);
+    memcpy3d_params.dstPtr.ptr = nullptr; //d_filter;
+    memcpy3d_params.dstPtr.pitch = N * sizeof(complex);
+    memcpy3d_params.dstPtr.xsize = N;
+    memcpy3d_params.dstPtr.ysize = N;
+    memcpy3d_params.extent.width = (N/2+1) * sizeof(complex);
+    memcpy3d_params.extent.height = (N/2+1);
+    memcpy3d_params.extent.depth = num_slices;
+    memcpy3d_params.kind = cudaMemcpyHostToDevice;
 }
 
-void cleanup_cuda()
+void DHMProcessor::cleanup_cuda()
 {
     CUDA_CHECK( cusparseDestroyMatDescr(descr) );
     CUDA_CHECK( cusparseDestroy(handle) );
@@ -178,13 +189,14 @@ void DHMProcessor::process_camera() {
 
 void DHMProcessor::process_folder(std::string input_dir, std::string output_dir)
 {
-    // make sure input, output directories are fine
-    using namespace boost::filesystem;
-    if ( !exists(output_dir) || !is_directory(output_dir) ) DHM_ERROR("Output directory not found");
+    input_dir = check_dir(input_dir);
+    output_dir = check_dir(output_dir);
 
     for (std::string &f_in : iter_folder(input_dir, "bmp"))
     {
         load_image(f_in);
+
+        // save_frame(); // only for process_camera
 
         CUDA_TIMER( process_frame() ); // *this* triggers the volume processing callback
         // TODO: ... and shouldn't hand over control until it's done!
@@ -194,7 +206,7 @@ void DHMProcessor::process_folder(std::string input_dir, std::string output_dir)
         // ... don't do that if you will have multiple callbacks at diff stages
 
         std::string f_out = output_dir + "/" + f_in.substr(f_in.find_last_of("/") + 1) + ".bin";
-//        CUDA_TIMER( save_volume(f_out) );
+        CUDA_TIMER( save_volume(f_out) );
 
         // write volume to disk... what format? HDF5?
     }
@@ -212,7 +224,9 @@ void DHMProcessor::process_frame()
     // start transferring filter quadrants to alternating buffer, for *next* frame
     // ... waiting for previous ops to finish first
     CUDA_CHECK( cudaDeviceSynchronize() );
-    transfer_filter_async(h_filter, d_filter[!buffer_pos]);
+    cudaMemcpy3DParms p = memcpy3d_params;
+    p.dstPtr.ptr = d_filter[!buffer_pos];
+    CUDA_CHECK( cudaMemcpy3DAsync(&p, async_stream) );
 
     // convert 8-bit image to real channel of complex float
     _b2c<<<N, N>>>(d_frame, d_image);
@@ -222,7 +236,7 @@ void DHMProcessor::process_frame()
     CUDA_CHECK( cufftXtExec(fft_plan, d_image, d_image, CUFFT_FORWARD) );
 
     // multiply image with stored quadrant of filter stack
-    _quad_mul<<<N/2+1, N/2+1>>>(d_filter[buffer_pos], d_image, d_mask, p);
+    _quad_mul<<<N/2+1, N/2+1>>>(d_filter[buffer_pos], d_image, d_mask, params);
     KERNEL_CHECK();
 
     // inverse FFT the product, and take complex magnitude
@@ -243,7 +257,7 @@ void DHMProcessor::process_frame()
     CUDA_CHECK( cudaStreamSynchronize(0) ); // allow the copy stream to continue in background
 
     // run the callback ...
-    callback(d_volume, d_mask, p);
+    callback(d_volume, d_mask, params);
     KERNEL_CHECK();
 
     // sync up the host-side and device-side masks, TODO: ensure ONCE IT'S DONE!!!

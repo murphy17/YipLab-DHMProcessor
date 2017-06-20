@@ -20,7 +20,6 @@ private:
 
     void build_filter_stack();
 
-    void transfer_filter_async(complex *, complex *);
     void save_image(const byte *);
     void convert_image(const byte *, complex *);
     void fft_image(complex *);
@@ -28,50 +27,39 @@ private:
     void ifft_stack(complex *, const byte *);
     void mod_stack(const complex *, float *, const byte *);
 
+    void display_image(byte *);
+    void display_volume(float *);
+    void load_image(std::string);
+    void process_frame();
+    void save_volume(std::string);
+    void load_volume(std::string, float*);
+    //    void save_frame(byte *); // TODO
+
     // experimental parameters
     int num_slices;
     float delta_z;
     float z_init;
-    DHMMemoryKind memory_kind;
+    DHMMemoryKind memory_kind; // presently this doesn't do that much
 
+    // internal parameters
     static bool is_initialized; // singleton
-
-    DHMParameters p;
+    DHMParameters params;
     DHMCallback callback;
 
-    // CUDA stuff
-
-    byte *h_frame, *h_mask;
-    byte *d_frame, *d_mask;
-
-    complex *h_filter;
-    complex *d_filter[2];
-    bool buffer_pos;
-
-    complex *d_image;
-
+    // CUDA handles
+    byte *h_frame, *h_mask, *d_frame, *d_mask;
+    complex *h_filter, *d_image;
+    complex *d_filter[2]; // double buffering
     float *d_volume;
-
-    cufftHandle fft_plan;
+    bool buffer_pos;
+    cudaStream_t async_stream;
+    cudaMemcpy3DParms memcpy3d_params;
+    cufftHandle fft_plan; // CUFFT
     const cudaDataType fft_type = CUDA_C_32F;
     long long fft_dims[2] = {N, N};
     size_t fft_work_size = 0;
-
-    cudaStream_t async_stream;
-
-    cusparseHandle_t handle = 0;
+    cusparseHandle_t handle = 0; // CUSparse
     cusparseMatDescr_t descr = 0;
-
-    void display_image(byte *);
-    void display_volume(float *);
-
-    void load_image(std::string);
-    void process_frame();
-    void save_volume(std::string);
-
-    void load_volume(std::string, float*);
-
-//    void save_frame(byte *); // TODO
 
 public:
     DHMProcessor(const int, const float, const float);
