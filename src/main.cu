@@ -99,6 +99,8 @@ int main(int argc, char* argv[])
 
     // process camera one-at-a-time vs process camera "fully automatic"
 
+    // WEDNESDAY: doctor's appt AM, so stay late
+    // get camera connected
 //    dhm.process_camera(ueye, output_dir);
 
     for (std::string &f_in : iter_folder(output_dir, "bin"))

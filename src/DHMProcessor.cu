@@ -684,21 +684,15 @@ void DHMProcessor::process_folder(std::string input_dir, std::string output_dir)
         // save_frame(); // only for process_camera
 
         CUDA_TIMER( process_frame() ); // *this* triggers the volume processing callback
-        // TODO: ... and shouldn't hand over control until it's done!
 
-        // TODO: I *think* it's safe to move the callback outside...?
-        // (sync up masks at the start, not end)
-        // ... don't do that if you will have multiple callbacks at diff stages
+        ////////////////////////////////////////////////////////////////////////
+        // VOLUME REDUCTION OPS GO HERE
+        ////////////////////////////////////////////////////////////////////////
 
+        // semi-placeholder save operation
         std::string f_out = output_dir + "/" + f_in.substr(f_in.find_last_of("/") + 1) + ".bin";
         CUDA_TIMER( save_volume(f_out) );
-
-        // write volume to disk... what format? HDF5?
     }
-
-    // wait for writes to finish
-//    if (save_thread.joinable())
-//        save_thread.join();
 }
 
 /*
@@ -775,6 +769,12 @@ void DHMProcessor::process_frame()
     _quad_mul<<<N/2+1, N/2+1>>>(d_filter[buffer_pos], d_image, d_mask, params);
     KERNEL_CHECK();
 
+
+    ////////////////////////////////////////////////////////////////////////////
+    // CUSTOM FREQUENCY DOMAIN OPS GO HERE
+    ////////////////////////////////////////////////////////////////////////////
+
+
     // inverse FFT the product, and take complex magnitude
     for (int i = 0; i < num_slices; i++)
     {
@@ -792,11 +792,17 @@ void DHMProcessor::process_frame()
     // construct volume from one frame's worth of slices once they're ready...
     CUDA_CHECK( cudaStreamSynchronize(0) ); // allow the copy stream to continue in background
 
+
+    ////////////////////////////////////////////////////////////////////////////
+    // CUSTOM SPATIAL DOMAIN OPS GO HERE
+    ////////////////////////////////////////////////////////////////////////////
+
+
     // run the callback ...
     callback(d_volume, d_mask, params);
     KERNEL_CHECK();
 
-    // sync up the host-side and device-side masks, TODO: ensure ONCE IT'S DONE!!!
+    // sync up the host-side and device-side masks once callback returns
     CUDA_CHECK( cudaMemcpy(h_mask, d_mask, num_slices*sizeof(byte), cudaMemcpyDeviceToHost) );
 
     // flip the buffer
