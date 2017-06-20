@@ -7,14 +7,10 @@
 
 #pragma once
 
-#include <opencv2/core.hpp>
-#include <opencv2/highgui.hpp>
-
-#include <boost/range.hpp>
-#include <boost/filesystem.hpp>
-
 #include "DHMCommon.cuh"
 #include "ops.cuh"
+
+namespace YipLab {
 
 class DHMProcessor
 {
@@ -29,11 +25,10 @@ private:
     void mod_stack(const complex *, float *, const byte *);
 
     // experimental parameters
-
-//    std::string inputDir;
-    std::string output_dir;
-
-    static const bool UNIFIED_MEM = false; // Jetson
+    int num_slices;
+    float delta_z;
+    float z_init;
+    DHMMemoryKind memory_kind;
 
     static bool is_initialized; // singleton
 
@@ -77,11 +72,12 @@ private:
 //    void save_frame(byte *); // TODO
 
 public:
-    DHMProcessor(std::string);
+    DHMProcessor(const int, const float, const float);
+    DHMProcessor(const int, const float, const float, const DHMMemoryKind);
     ~DHMProcessor();
 
     void process_camera();
-    void process_folder(std::string);
+    void process_folder(std::string, std::string);
 
     void view_volume(std::string);
 
@@ -90,14 +86,9 @@ public:
 
     // TODO: take some of these from constructor
     static const int N = 1024;
-    static const int NUM_SLICES = 100;
-    static const int NUM_FRAMES = 10;
     static constexpr float DX = (5.32f / 1024.f);
     static constexpr float DY = (6.66f / 1280.f);
-    static constexpr float DZ = 1.f;
-    static constexpr float Z0 = 30.f;
     static constexpr float LAMBDA0 = 0.000488f;
-    static constexpr float ZERO_THR = 1e-3;
-
 };
 
+}

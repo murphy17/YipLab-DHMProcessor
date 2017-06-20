@@ -11,6 +11,8 @@
 #include "ops.cuh"
 #include "DHMProcessor.cuh"
 
+namespace YipLab {
+
 ///////////////////////////////////////////////////////////////////////////////
 // Complex arithmetic
 ///////////////////////////////////////////////////////////////////////////////
@@ -68,14 +70,11 @@ void _modulus(const __restrict__ complex *z, float *r)
 
 
 ///////////////////////////////////////////////////////////////////////////////
-// Construct "PSF"
+// Construct filter stack
 ///////////////////////////////////////////////////////////////////////////////
 
-__global__ void _gen_filter_slice(
-    complex *g,
-    const float z,
-    const DHMParameters p
-) {
+__global__ void _gen_filter_slice(complex *g, const float z, const DHMParameters p)
+{
     const int i = blockIdx.x;
     const int j = threadIdx.x;
 
@@ -110,7 +109,7 @@ void DHMProcessor::transfer_filter_async(complex *h_filter, complex *d_filter)
     q.dstPtr.ysize = N;
     q.extent.width = (N/2+1) * sizeof(complex);
     q.extent.height = (N/2+1);
-    q.extent.depth = NUM_SLICES;
+    q.extent.depth = num_slices;
     q.kind = cudaMemcpyHostToDevice;
 
     CUDA_CHECK( cudaMemcpy3DAsync(&q, async_stream) );
@@ -120,9 +119,9 @@ void DHMProcessor::gen_filter_quadrant(complex *h_filter) {
     complex *slice;
     CUDA_CHECK( cudaMalloc(&slice, N*N*sizeof(complex)) );
 
-    for (int i = 0; i < NUM_SLICES; i++)
+    for (int i = 0; i < num_slices; i++)
     {
-        _gen_filter_slice<<<N, N>>>(slice, Z0 + i * DZ, p);
+        _gen_filter_slice<<<N, N>>>(slice, z_init + i * delta_z, p);
         KERNEL_CHECK();
 
         // FFT in-place
@@ -171,7 +170,7 @@ void _quad_mul(
         complex w3 = w[i*p.N+jj];
         complex w4 = w[ii*p.N+jj];
 
-        for (int k = 0; k < p.NUM_SLICES; k++)
+        for (int k = 0; k < p.num_slices; k++)
         {
             if (mask[k])
             {
@@ -189,7 +188,7 @@ void _quad_mul(
         complex w1 = w[i*p.N+j];
         complex w2 = w[ii*p.N+j];
 
-        for (int k = 0; k < p.NUM_SLICES; k++)
+        for (int k = 0; k < p.num_slices; k++)
         {
             if (mask[k])
             {
@@ -205,7 +204,7 @@ void _quad_mul(
         complex w1 = w[i*p.N+j];
         complex w2 = w[i*p.N+jj];
 
-        for (int k = 0; k < p.NUM_SLICES; k++)
+        for (int k = 0; k < p.num_slices; k++)
         {
             if (mask[k])
             {
@@ -220,7 +219,7 @@ void _quad_mul(
     {
         complex w1 = w[i*p.N+j];
 
-        for (int k = 0; k < p.NUM_SLICES; k++)
+        for (int k = 0; k < p.num_slices; k++)
         {
             if (mask[k])
             {
@@ -316,7 +315,7 @@ void DHMProcessor::load_image(std::string path)
 
     memcpy(h_frame, frame_mat.data, N*N*sizeof(byte));
 
-    if (!UNIFIED_MEM)
+    if (memory_kind == DHM_STANDARD_MEM)
     {
         CUDA_CHECK( cudaMemcpy(d_frame, h_frame, N*N*sizeof(byte), cudaMemcpyHostToDevice) );
     }
@@ -340,7 +339,7 @@ void DHMProcessor::save_volume(std::string path)
 //    if (write_task_ready)
 //        write_task.wait();
 
-    volume2sparse(handle, descr, d_volume, &d_x, N, &d_y, N, &d_z, NUM_SLICES, &d_v, &nnz);
+    volume2sparse(handle, descr, d_volume, &d_x, N, &d_y, N, &d_z, num_slices, &d_v, &nnz);
 
 //    if (!write_task_ready)
 //    {
@@ -403,7 +402,7 @@ void DHMProcessor::display_image(byte *h_image)
 
 void DHMProcessor::display_volume(float *h_volume)
 {
-    for (int i = 0; i< NUM_SLICES; i++)
+    for (int i = 0; i< num_slices; i++)
     {
         cv::Mat mat(N, N, CV_32F, h_volume + i*N*N);
         cv::normalize(mat, mat, 1.0, 0.0, cv::NORM_MINMAX, -1);
@@ -433,4 +432,6 @@ std::vector<std::string> iter_folder(std::string path, std::string ext = "")
     if ( dir.size() == 0 ) DHM_ERROR("No matching files found");
 
     return dir;
+}
+
 }

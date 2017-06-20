@@ -7,16 +7,10 @@
 
 #pragma once
 
-//#include <thrust/transform.h>
-//#include <thrust/tuple.h>
-//#include <thrust/iterator/zip_iterator.h>
-//#include <thrust/iterator/counting_iterator.h>
-//#include <thrust/device_ptr.h>
-//#include <thrust/device_vector.h>
-//#include <thrust/count.h>
-
 #include "DHMCommon.cuh"
 #include "DHMProcessor.cuh"
+
+namespace YipLab {
 
 __global__ void _b2c(const byte*, complex*);
 
@@ -29,3 +23,5 @@ __global__ void _gen_filter_slice(complex*, const float, const DHMParameters);
 __global__ void _quad_mul(complex*, const complex*, const byte*, const DHMParameters);
 
 std::vector<std::string> iter_folder(std::string, std::string);
+
+}

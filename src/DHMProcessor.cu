@@ -8,7 +8,7 @@
 #include "DHMCommon.cuh"
 #include "DHMProcessor.cuh"
 
-//namespace YipLab {
+namespace YipLab {
 
 DHMCallback::DHMCallback() {
     _func = nullptr;
@@ -31,22 +31,22 @@ void DHMCallback::operator()(float *img, byte *mask, DHMParameters params) {
 
 bool DHMProcessor::is_initialized = false;
 
-DHMProcessor::DHMProcessor(std::string output_dir) {
+DHMProcessor::DHMProcessor(const int num_slices, const float delta_z, const float z_init,
+                           const DHMMemoryKind memory_kind = DHM_STANDARD_MEM)
+{
     if (is_initialized) DHM_ERROR("Only a single instance of DHMProcessor is permitted");
 
-    this->output_dir = output_dir;
-
-    // reset the GPU, use proper exceptions to do this...
     CUDA_CHECK( cudaDeviceReset() );
+
+    this->num_slices = num_slices;
+    this->delta_z = delta_z;
+    this->z_init = z_init;
+    this->memory_kind = memory_kind;
 
     // camera crap would go here...
 
-    // make sure input, output directories are fine
-    using namespace boost::filesystem;
-    if ( !exists(output_dir) || !is_directory(output_dir) ) DHM_ERROR("Output directory not found");
-
-    // pack parameters
-    p = { N, NUM_SLICES, NUM_FRAMES, DX, DY, DZ, Z0, LAMBDA0 };
+    // pack parameters (for kernels)
+    p = { N, num_slices, DX, DY, delta_z, z_init, LAMBDA0 };
 
     // allocate buffers, setup FFTs
 
@@ -59,23 +59,23 @@ DHMProcessor::DHMProcessor(std::string output_dir) {
                                     1, &fft_work_size, fft_type) );
 
     // only one quadrant stored on host -- point is to minimize transfer time
-    CUDA_CHECK( cudaMallocHost(&h_filter, NUM_SLICES*(N/2+1)*(N/2+1)*sizeof(complex)) );
+    CUDA_CHECK( cudaMallocHost(&h_filter, num_slices*(N/2+1)*(N/2+1)*sizeof(complex)) );
     // double buffering
-    CUDA_CHECK( cudaMalloc(&d_filter[0], NUM_SLICES*N*N*sizeof(complex)) );
-    CUDA_CHECK( cudaMalloc(&d_filter[1], NUM_SLICES*N*N*sizeof(complex)) );
+    CUDA_CHECK( cudaMalloc(&d_filter[0], num_slices*N*N*sizeof(complex)) );
+    CUDA_CHECK( cudaMalloc(&d_filter[1], num_slices*N*N*sizeof(complex)) );
 
     CUDA_CHECK( cudaMallocHost(&h_frame, N*N*sizeof(byte)) );
     CUDA_CHECK( cudaMalloc(&d_frame, N*N*sizeof(byte)) );
 
     CUDA_CHECK( cudaMalloc(&d_image, N*N*sizeof(complex)) );
 
-    CUDA_CHECK( cudaMalloc(&d_volume, NUM_SLICES*N*N*sizeof(float)) );
+    CUDA_CHECK( cudaMalloc(&d_volume, num_slices*N*N*sizeof(float)) );
 
-    CUDA_CHECK( cudaMallocHost(&h_mask, NUM_SLICES*sizeof(byte)) );
-    CUDA_CHECK( cudaMalloc(&d_mask, NUM_SLICES*sizeof(byte)) );
+    CUDA_CHECK( cudaMallocHost(&h_mask, num_slices*sizeof(byte)) );
+    CUDA_CHECK( cudaMalloc(&d_mask, num_slices*sizeof(byte)) );
 
     // allow unified memory
-    if (UNIFIED_MEM)
+    if (memory_kind == DHM_UNIFIED_MEM)
         cudaSetDeviceFlags(cudaDeviceMapHost);
 
     // setup sparse save - just proof of concept, this is really slow
@@ -92,8 +92,8 @@ DHMProcessor::DHMProcessor(std::string output_dir) {
     transfer_filter_async(h_filter, d_filter[buffer_pos]);
     CUDA_CHECK( cudaStreamSynchronize(async_stream) );
     // initially query all slices
-    memset(h_mask, 1, NUM_SLICES);
-    CUDA_CHECK( cudaMemcpy(d_mask, h_mask, NUM_SLICES*sizeof(byte), cudaMemcpyHostToDevice) );
+    memset(h_mask, 1, num_slices);
+    CUDA_CHECK( cudaMemcpy(d_mask, h_mask, num_slices*sizeof(byte), cudaMemcpyHostToDevice) );
 
     is_initialized = true;
 }
@@ -154,8 +154,12 @@ void DHMProcessor::process_camera() {
 }
 */
 
-void DHMProcessor::process_folder(std::string input_dir)
+void DHMProcessor::process_folder(std::string input_dir, std::string output_dir)
 {
+    // make sure input, output directories are fine
+    using namespace boost::filesystem;
+    if ( !exists(output_dir) || !is_directory(output_dir) ) DHM_ERROR("Output directory not found");
+
     for (std::string &f_in : iter_folder(input_dir, "bmp"))
     {
         load_image(f_in);
@@ -170,7 +174,7 @@ void DHMProcessor::process_folder(std::string input_dir)
         std::string f_out = output_dir + "/" + f_in.substr(f_in.find_last_of("/") + 1) + ".bin";
         CUDA_TIMER( save_volume(f_out) );
 
-//        float *h_volume = new float[N*N*NUM_SLICES];
+//        float *h_volume = new float[N*N*num_slices];
 //        load_volume(f_out, h_volume);
 //        display_volume(h_volume);
 //        delete[] h_volume;
@@ -205,7 +209,7 @@ void DHMProcessor::process_frame(bool use_camera)
     KERNEL_CHECK();
 
     // inverse FFT the product, and take complex magnitude
-    for (int i = 0; i < NUM_SLICES; i++)
+    for (int i = 0; i < num_slices; i++)
     {
         if (h_mask[i])
         {
@@ -226,7 +230,7 @@ void DHMProcessor::process_frame(bool use_camera)
     KERNEL_CHECK();
 
     // sync up the host-side and device-side masks, TODO: ensure ONCE IT'S DONE!!!
-    CUDA_CHECK( cudaMemcpy(h_mask, d_mask, NUM_SLICES*sizeof(byte), cudaMemcpyDeviceToHost) );
+    CUDA_CHECK( cudaMemcpy(h_mask, d_mask, num_slices*sizeof(byte), cudaMemcpyDeviceToHost) );
 
     // flip the buffer
     buffer_pos = !buffer_pos;
@@ -271,11 +275,11 @@ void DHMProcessor::process_camera() {
 
 void DHMProcessor::view_volume(std::string f_in)
 {
-    float *h_volume = new float[N*N*NUM_SLICES];
+    float *h_volume = new float[N*N*num_slices];
     load_volume(f_in, h_volume);
     display_volume(h_volume);
     delete[] h_volume;
 }
 
-
+}
 

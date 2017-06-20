@@ -15,6 +15,8 @@
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 
+namespace YipLab {
+
 ////////////////////////////////////////////////////////////////////////////////
 // CUDA timer
 ////////////////////////////////////////////////////////////////////////////////
@@ -208,4 +210,4 @@ inline void _CUDA_SHOW(const char* const name, T *x, int const m, int const n)
     delete[] x_;
 }
 
-
+}

@@ -13,6 +13,8 @@
 
 // TODO: clean up file organization, it's convoluted
 
+using namespace YipLab;
+
 ////////////////////////////////////////////////////////////////////////////////
 // Examples of user-provided callbacks
 ////////////////////////////////////////////////////////////////////////////////
@@ -28,29 +30,29 @@ void cb_func(float *d_volume, byte *d_mask, DHMParameters p)
 
     Ptr<Filter> gaussian = createGaussianFilter(CV_32F, CV_32F, Size(7, 7), 3);
 
-    for (int k = 0; k < p.NUM_SLICES; k++)
+    for (int k = 0; k < p.num_slices; k++)
     {
         GpuMat slice(p.N, p.N, CV_32F, d_volume + k*p.N*p.N);
         gaussian->apply(slice, slice);
     }
 
     // ... and set the mask
-    GpuMat mask(p.NUM_SLICES, 1, CV_8U, d_mask);
+    GpuMat mask(p.num_slices, 1, CV_8U, d_mask);
     mask.setTo(Scalar_<unsigned char>(1));
 }
 
 void show_cb(float *d_volume, byte *d_mask, DHMParameters p)
 {
-    for (int k = 0; k < p.NUM_SLICES; k++)
+    for (int k = 0; k < p.num_slices; k++)
         CUDA_SHOW(d_volume + k*p.N*p.N, p.N, p.N);
 
     // ... and set the mask
-    CUDA_CHECK( cudaMemset(d_mask, 1, p.NUM_SLICES) );
+    CUDA_CHECK( cudaMemset(d_mask, 1, p.num_slices) );
 }
 
 void id_cb(float *d_volume, byte *d_mask, DHMParameters p)
 {
-    CUDA_CHECK( cudaMemset(d_mask, 1, p.NUM_SLICES) );
+    CUDA_CHECK( cudaMemset(d_mask, 1, p.num_slices) );
 }
 
 void thr_cb(float *d_volume, byte *d_mask, DHMParameters p)
@@ -58,18 +60,18 @@ void thr_cb(float *d_volume, byte *d_mask, DHMParameters p)
     // just to make the matrix sparse
 
     // deal with tomorrow
-    for (int k = 0; k < p.NUM_SLICES; k++)
+    for (int k = 0; k < p.num_slices; k++)
     {
         cv::cuda::GpuMat slice(p.N, p.N, CV_32F, d_volume + k*p.N*p.N);
         cv::cuda::normalize(slice, slice, 1.0, 0.0, cv::NORM_MINMAX, -1);
         cv::cuda::threshold(slice, slice, 0.25, 0.0, cv::THRESH_TOZERO_INV);
     }
 
-//    for (int k = 0; k < p.NUM_SLICES; k++)
+//    for (int k = 0; k < p.num_slices; k++)
 //        CUDA_SHOW(d_volume + k*p.N*p.N, p.N, p.N);
 
     // ... and set the mask
-    cv::cuda::GpuMat mask(p.NUM_SLICES, 1, CV_8U, d_mask);
+    cv::cuda::GpuMat mask(p.num_slices, 1, CV_8U, d_mask);
     mask.setTo(cv::Scalar_<unsigned char>(1));
 }
 
@@ -81,17 +83,20 @@ int main(int argc, char* argv[])
 {
     using namespace std;
 
+    string input_dir = "../test/input";
     string output_dir = "../test/output";
+    int num_slices = 100;
+    float delta_z = 1.0f;
+    float z_init = 30.0f;
 
-    // TODO: take in some scientific / experimental parameters via constructor
-    DHMProcessor dhm(output_dir);
+    DHMProcessor dhm(num_slices, delta_z, z_init, DHM_UNIFIED_MEM);
 
     // TODO: allow callbacks to have state, i.e. with additional params
     // have an enum -- freq / time domain?
     // the former doesn't take the mask though...
     dhm.set_callback(DHMCallback(thr_cb)); // DHM_BEFORE_FFT, DHM_AFTER_FFT
 
-    dhm.process_folder("../test/input");
+    dhm.process_folder(input_dir, output_dir);
 
     for (std::string &f_in : iter_folder(output_dir, "bin"))
     {

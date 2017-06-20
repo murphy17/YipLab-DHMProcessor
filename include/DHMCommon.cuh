@@ -20,9 +20,15 @@
 
 #include <cusparse_v2.h>
 #include <cufftXt.h>
+#include <opencv2/core.hpp>
+#include <opencv2/highgui.hpp>
+#include <boost/range.hpp>
+#include <boost/filesystem.hpp>
 
 #include "common.h"
 #include "util.cuh"
+
+namespace YipLab {
 
 ////////////////////////////////////////////////////////////////////////////////
 // Error handling
@@ -70,15 +76,16 @@ inline void _check_kernel(const char *const file, const int line) {
 typedef float2 complex;
 typedef unsigned char byte;
 
-////////////////////////////////////////////////////////////////////////////////
-// Class to store experimental parameters
-////////////////////////////////////////////////////////////////////////////////
-
+// holds parameters for passing to kernels
 typedef struct
 {
-    int N, NUM_SLICES, NUM_FRAMES;
-    float DX, DY, DZ, Z0, LAMBDA0;
+    int N, num_slices;
+    float DX, DY, LAMBDA0;
+    float delta_z, z_init;
 }  DHMParameters;
+
+enum DHMMemoryKind { DHM_STANDARD_MEM, DHM_UNIFIED_MEM };
+enum DHMInputSource { DHM_FOLDER_SRC, DHM_CAMERA_SRC };
 
 ////////////////////////////////////////////////////////////////////////////////
 // Callback class for volume processing
@@ -98,3 +105,5 @@ public:
     DHMCallback(void (*)(float *, byte *, DHMParameters));
     void operator()(float *, byte *, DHMParameters);
 };
+
+}
