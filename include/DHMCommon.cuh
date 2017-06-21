@@ -17,6 +17,7 @@
 #include <vector>
 #include <cstdlib>
 #include <thread>
+#include <atomic>
 
 #include <cusparse_v2.h>
 #include <cufftXt.h>
@@ -40,7 +41,7 @@ public:
     std::string msg;
 //    int line;
 
-    DHMException(const char *msg, const char *const file, int const line) {
+    DHMException(std::string msg, const char *const file, int const line) {
         this->msg =  "DHM exception at line " + std::to_string(line) + " in " + file + ": " + msg;
         cudaDeviceReset();
     }
@@ -69,7 +70,7 @@ inline void _check_kernel(const char *const file, const int line) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Type definitions (i.e. for 16/32-bit precision)
+// Type definitions
 ////////////////////////////////////////////////////////////////////////////////
 
 typedef float2 complex;

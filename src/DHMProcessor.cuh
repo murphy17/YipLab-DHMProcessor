@@ -8,6 +8,7 @@
 #pragma once
 
 #include "DHMCommon.cuh"
+#include "UEyeCamera/UEyeCamera.hpp"
 
 namespace YipLab {
 
@@ -19,7 +20,7 @@ __global__ void _gen_filter_slice(complex*, const float, const DHMParameters);
 __global__ void _quad_mul(complex*, const complex*, const byte*, const DHMParameters);
 
 // misc helper stuff
-std::vector<std::string> iter_folder(std::string, std::string);
+std::vector<std::string> iter_folder(std::string, std::string = "");
 std::string check_dir(std::string);
 
 class DHMProcessor
@@ -37,32 +38,37 @@ private:
     void ifft_stack(complex *, const byte *);
     void mod_stack(const complex *, float *, const byte *);
 
-    void display_image(byte *);
-    void display_volume(float *);
+    void ueye_callback();
+    void process(std::string);
     void load_image(std::string);
     void save_image(std::string);
-    void process_frame();
+    void generate_volume();
     void save_volume(std::string);
-    void load_volume(std::string, float*);
-    //    void save_frame(byte *); // TODO
+
+    void display_image(byte *);
+    void display_volume(float *, bool);
 
     // experimental parameters
     int num_slices;
     float delta_z;
     float z_init;
     DHMMemoryKind memory_kind; // presently this doesn't do that much
+    bool do_save_volume;
+    std::string output_dir;
 
     // internal parameters
     static bool is_initialized; // singleton
     DHMParameters params;
     DHMCallback callback;
+    bool is_running = false;
+    int frame_num = 0;
     // std::thread save_thread;
 
     // CUDA handles
     byte *h_frame, *h_mask, *d_frame, *d_mask;
     complex *h_filter, *d_image;
     complex *d_filter[2]; // double buffering
-    float *d_volume;
+    float *d_volume, *d_result;
     bool buffer_pos;
     cudaStream_t async_stream;
     cudaMemcpy3DParms memcpy3d_params;
@@ -74,14 +80,11 @@ private:
     cusparseMatDescr_t descr = 0;
 
 public:
-    DHMProcessor(const int, const float, const float);
-    DHMProcessor(const int, const float, const float, const DHMMemoryKind);
+    DHMProcessor(const int, const float, const float, const DHMMemoryKind = DHM_STANDARD_MEM);
     ~DHMProcessor();
 
-    void process_camera();
-    void process_folder(std::string, std::string);
-
-    void view_volume(std::string);
+    void process_ueye(float, std::string, bool, int = -1);
+    void process_folder(std::string, std::string, bool);
 
     // should this be in constructor?
     void set_callback(DHMCallback);

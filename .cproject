@@ -29,6 +29,7 @@
 								<option id="nvcc.compiler.pic.1584653482" name="Position Independent Code (-fPIC)" superClass="nvcc.compiler.pic"/>
 								<option id="nvcc.compiler.include.paths.737669456" name="Include paths (-I)" superClass="nvcc.compiler.include.paths" valueType="includePath">
 									<listOptionValue builtIn="false" value="../include"/>
+									<listOptionValue builtIn="false" value="/usr/include"/>
 									<listOptionValue builtIn="false" value="../src"/>
 									<listOptionValue builtIn="false" value="/usr/include/opencv2"/>
 								</option>
@@ -36,6 +37,7 @@
 								<option id="nvcc.compiler.usefastmath.642599607" name="Make use of fast math library (-use_fast_math)" superClass="nvcc.compiler.usefastmath" value="true" valueType="boolean"/>
 								<option id="nvcc.compiler.compileroptions.1691892027" name="Preprocessor options (-Xcompiler)" superClass="nvcc.compiler.compileroptions" valueType="stringList">
 									<listOptionValue builtIn="false" value="-O3"/>
+									<listOptionValue builtIn="false" value="-pthread"/>
 								</option>
 								<option id="nvcc.compiler.ptxasoptions.452457864" name="ptaxas options (-Xptxas)" superClass="nvcc.compiler.ptxasoptions" valueType="stringList">
 									<listOptionValue builtIn="false" value="-O3"/>
@@ -47,6 +49,7 @@
 							<tool commandLinePattern="${COMMAND} ${FLAGS} ${OUTPUT_FLAG} ${OUTPUT_PREFIX} ${OUTPUT} ${INPUTS}" id="nvcc.linker.base.101957943" name="NVCC Linker" superClass="nvcc.linker.base">
 								<option id="nvcc.linker.option.libs.1694686809" name="Libraries (-l)" superClass="nvcc.linker.option.libs" valueType="libs">
 									<listOptionValue builtIn="false" value="opencv_core"/>
+									<listOptionValue builtIn="false" value="ueye_api"/>
 									<listOptionValue builtIn="false" value="pthread"/>
 									<listOptionValue builtIn="false" value="opencv_cudaimgproc"/>
 									<listOptionValue builtIn="false" value="opencv_cudafilters"/>
@@ -61,7 +64,7 @@
 									<listOptionValue builtIn="false" value="cufft"/>
 									<listOptionValue builtIn="false" value="opencv_imgcodecs"/>
 								</option>
-								<option id="nvcc.linker.option.other.668167005" name="Other options (-Xlinker [option])" superClass="nvcc.linker.option.other" valueType="stringList"/>
+								<option id="nvcc.linker.option.other.668167005" name="Other options (-Xlinker [option])" superClass="nvcc.linker.option.other"/>
 								<inputType id="nvcc.linker.input.1123372976" superClass="nvcc.linker.input">
 									<additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
 									<additionalInput kind="additionalinput" paths="$(LIBS)"/>

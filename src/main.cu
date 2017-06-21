@@ -11,35 +11,13 @@
 #include <opencv2/cudaarithm.hpp>
 #include <opencv2/cudafilters.hpp>
 
-// TODO: clean up file organization, it's convoluted
-
 using namespace YipLab;
+
+// TODO: add depth-map handle to callback
 
 ////////////////////////////////////////////////////////////////////////////////
 // Examples of user-provided callbacks
 ////////////////////////////////////////////////////////////////////////////////
-
-// TODO: being able to operate on the slices in Fourier domain would be nice...
-// ... two callbacks would be easiest thing to do here, before/after FFT+mod
-void cb_func(float *d_volume, byte *d_mask, DHMParameters p)
-{
-    // some example processing, in pure OpenCV. note this is *quite* slow...
-
-    using namespace cv::cuda;
-    using namespace cv;
-
-    Ptr<Filter> gaussian = createGaussianFilter(CV_32F, CV_32F, Size(7, 7), 3);
-
-    for (int k = 0; k < p.num_slices; k++)
-    {
-        GpuMat slice(p.N, p.N, CV_32F, d_volume + k*p.N*p.N);
-        gaussian->apply(slice, slice);
-    }
-
-    // ... and set the mask
-    GpuMat mask(p.num_slices, 1, CV_8U, d_mask);
-    mask.setTo(Scalar_<unsigned char>(1));
-}
 
 void show_cb(float *d_volume, byte *d_mask, DHMParameters p)
 {
@@ -62,12 +40,10 @@ void thr_cb(float *d_volume, byte *d_mask, DHMParameters p)
     for (int k = 0; k < p.num_slices; k++)
     {
         cv::cuda::GpuMat slice(p.N, p.N, CV_32F, d_volume + k*p.N*p.N);
-        cv::cuda::normalize(slice, slice, 1.0, 0.0, cv::NORM_MINMAX, -1);
-        cv::cuda::threshold(slice, slice, 0.25, 0.0, cv::THRESH_TOZERO_INV);
+        cv::cuda::normalize(slice, slice, 0.0, 1.0, cv::NORM_MINMAX, -1);
+        cv::cuda::multiply(slice, slice, slice); // boost contrast
+        cv::cuda::threshold(slice, slice, 0.05, 0.0, cv::THRESH_TOZERO_INV); // can use Otsu too
     }
-
-//    for (int k = 0; k < p.num_slices; k++)
-//        CUDA_SHOW(d_volume + k*p.N*p.N, p.N, p.N);
 
     // ... and set the mask
     cv::cuda::GpuMat mask(p.num_slices, 1, CV_8U, d_mask);
@@ -82,38 +58,27 @@ int main(int argc, char* argv[])
 {
     using namespace std;
 
-    string input_dir = "../test";
-    string output_dir = "~/image_store/Murphy_Michael/dhm";
+    string input_dir = "~/image_store/Murphy_Michael/dhm_in/spheres";
+    string output_dir = "~/image_store/Murphy_Michael/dhm_out/camera";
     int num_slices = 100;
     float delta_z = 1.0f;
     float z_init = 30.0f;
+    bool save_volume = true;
 
     DHMProcessor dhm(num_slices, delta_z, z_init, DHM_UNIFIED_MEM);
 
     // TODO: allow callbacks to have state, i.e. with additional params
     // have an enum -- freq / time domain?
     // the former doesn't take the mask though...
-    dhm.set_callback(DHMCallback(thr_cb)); // DHM_BEFORE_FFT, DHM_AFTER_FFT
+    dhm.set_callback(DHMCallback(id_cb)); // DHM_BEFORE_FFT, DHM_AFTER_FFT
 
-    dhm.process_folder(input_dir, output_dir);
+    // inputs must be bitmaps, of size 1024x1024
+    // and this iterates in NOT NATURAL ORDER! (prefix filenames with zeros...)
+//    dhm.process_folder(input_dir, output_dir, save_volume);
 
-    // process camera one-at-a-time vs process camera "fully automatic"
-
-    // WEDNESDAY: doctor's appt AM, so stay late
-    // get camera connected
-//    dhm.process_camera(ueye, output_dir);
-
-    for (std::string &f_in : iter_folder(output_dir, "bin"))
-    {
-        std::cout << f_in << std::endl;
-        dhm.view_volume(f_in);
-    }
+    float fps = 1;
+    int num_frames = 5;
+    dhm.process_ueye(fps, output_dir, save_volume, num_frames);
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// Example usage - camera
-////////////////////////////////////////////////////////////////////////////////
-
-// TODO
-// micromanager would be great too
 

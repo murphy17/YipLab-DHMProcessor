@@ -239,69 +239,69 @@ void _quad_mul(
 // this interface is awful, dumb hack
 // and this method is WAY too slow
 // some notes: dX, dY fit into chars, can cast V to char; use special packet for new slice
-void volume2sparse(const cusparseHandle_t handle, const cusparseMatDescr_t descr,
-                   const float *vol, int **x, int m, int **y, int n, int **z, int p, float **v, int *totalNnz,
-                   const bool unified_mem = false, int **h_x = nullptr, int **h_y = nullptr, int **h_z = nullptr, float **h_v = nullptr)
-{
-    int nnz;
-    int *dNnzPerRow, *dCsrRowPtrA;
-    CUDA_CHECK( cudaMalloc(&dNnzPerRow, m*sizeof(int)) );
-    CUDA_CHECK( cudaMalloc(&dCsrRowPtrA, (m+1)*sizeof(int)) );
-
-    CUDA_CHECK( cusparseSnnz(handle, CUSPARSE_DIRECTION_ROW, m, n*p, descr, vol, m, dNnzPerRow, totalNnz) );
-
-    if (unified_mem)
-    {
-        CUDA_CHECK( cudaMallocHost(h_x, (*totalNnz)*sizeof(int)) );
-        CUDA_CHECK( cudaMallocHost(h_y, (*totalNnz)*sizeof(int)) );
-        CUDA_CHECK( cudaMallocHost(h_z, (*totalNnz)*sizeof(int)) );
-        CUDA_CHECK( cudaMallocHost(h_v, (*totalNnz)*sizeof(float)) );
-        CUDA_CHECK( cudaHostGetDevicePointer(x, *h_x, 0) );
-        CUDA_CHECK( cudaHostGetDevicePointer(y, *h_y, 0) );
-        CUDA_CHECK( cudaHostGetDevicePointer(z, *h_z, 0) );
-        CUDA_CHECK( cudaHostGetDevicePointer(v, *h_v, 0) );
-    }
-    else
-    {
-        CUDA_CHECK( cudaMalloc(x, (*totalNnz)*sizeof(int)) );
-        CUDA_CHECK( cudaMalloc(y, (*totalNnz)*sizeof(int)) );
-        CUDA_CHECK( cudaMalloc(z, (*totalNnz)*sizeof(int)) );
-        CUDA_CHECK( cudaMalloc(v, (*totalNnz)*sizeof(float)) );
-    }
-
-    int s = 0;
-
-    for (int k = 0; k < p; k++)
-    {
-        const float *slice = vol + m * n * k;
-
-        int *dCooRowIndA = *x + s;
-        int *dCsrColIndA = *y + s;
-        float *dCsrValA = *v + s;
-
-        // count nonzeros in slice
-        CUDA_CHECK( cusparseSnnz(handle, CUSPARSE_DIRECTION_ROW, m, n, descr, slice, m, dNnzPerRow, &nnz) );
-
-        // first get CSR matrix
-        CUDA_CHECK( cusparseSdense2csr(handle, m, n, descr, slice, m, dNnzPerRow,
-                                       dCsrValA, dCsrRowPtrA, dCsrColIndA) );
-
-        // then generate COO indices
-        CUDA_CHECK( cusparseXcsr2coo(handle, dCsrRowPtrA, nnz, m, dCooRowIndA, CUSPARSE_INDEX_BASE_ZERO) );
-
-        cudaDeviceSynchronize();
-
-        // generate Z indices
-        CUDA_CHECK( cudaFill(*z + s, k, nnz) );
-
-        s += nnz;
-    }
-
-    CUDA_CHECK( cudaFree(dNnzPerRow) );
-    CUDA_CHECK( cudaFree(dCsrRowPtrA) );
-
-    cudaDeviceSynchronize();
-}
+//void volume2sparse(const cusparseHandle_t handle, const cusparseMatDescr_t descr,
+//                   const float *vol, int **x, int m, int **y, int n, int **z, int p, float **v, int *totalNnz,
+//                   const bool unified_mem = false, int **h_x = nullptr, int **h_y = nullptr, int **h_z = nullptr, float **h_v = nullptr)
+//{
+//    int nnz;
+//    int *dNnzPerRow, *dCsrRowPtrA;
+//    CUDA_CHECK( cudaMalloc(&dNnzPerRow, m*sizeof(int)) );
+//    CUDA_CHECK( cudaMalloc(&dCsrRowPtrA, (m+1)*sizeof(int)) );
+//
+//    CUDA_CHECK( cusparseSnnz(handle, CUSPARSE_DIRECTION_ROW, m, n*p, descr, vol, m, dNnzPerRow, totalNnz) );
+//
+//    if (unified_mem)
+//    {
+//        CUDA_CHECK( cudaMallocHost(h_x, (*totalNnz)*sizeof(int)) );
+//        CUDA_CHECK( cudaMallocHost(h_y, (*totalNnz)*sizeof(int)) );
+//        CUDA_CHECK( cudaMallocHost(h_z, (*totalNnz)*sizeof(int)) );
+//        CUDA_CHECK( cudaMallocHost(h_v, (*totalNnz)*sizeof(float)) );
+//        CUDA_CHECK( cudaHostGetDevicePointer(x, *h_x, 0) );
+//        CUDA_CHECK( cudaHostGetDevicePointer(y, *h_y, 0) );
+//        CUDA_CHECK( cudaHostGetDevicePointer(z, *h_z, 0) );
+//        CUDA_CHECK( cudaHostGetDevicePointer(v, *h_v, 0) );
+//    }
+//    else
+//    {
+//        CUDA_CHECK( cudaMalloc(x, (*totalNnz)*sizeof(int)) );
+//        CUDA_CHECK( cudaMalloc(y, (*totalNnz)*sizeof(int)) );
+//        CUDA_CHECK( cudaMalloc(z, (*totalNnz)*sizeof(int)) );
+//        CUDA_CHECK( cudaMalloc(v, (*totalNnz)*sizeof(float)) );
+//    }
+//
+//    int s = 0;
+//
+//    for (int k = 0; k < p; k++)
+//    {
+//        const float *slice = vol + m * n * k;
+//
+//        int *dCooRowIndA = *x + s;
+//        int *dCsrColIndA = *y + s;
+//        float *dCsrValA = *v + s;
+//
+//        // count nonzeros in slice
+//        CUDA_CHECK( cusparseSnnz(handle, CUSPARSE_DIRECTION_ROW, m, n, descr, slice, m, dNnzPerRow, &nnz) );
+//
+//        // first get CSR matrix
+//        CUDA_CHECK( cusparseSdense2csr(handle, m, n, descr, slice, m, dNnzPerRow,
+//                                       dCsrValA, dCsrRowPtrA, dCsrColIndA) );
+//
+//        // then generate COO indices
+//        CUDA_CHECK( cusparseXcsr2coo(handle, dCsrRowPtrA, nnz, m, dCooRowIndA, CUSPARSE_INDEX_BASE_ZERO) );
+//
+//        cudaDeviceSynchronize();
+//
+//        // generate Z indices
+//        CUDA_CHECK( cudaFill(*z + s, k, nnz) );
+//
+//        s += nnz;
+//    }
+//
+//    CUDA_CHECK( cudaFree(dNnzPerRow) );
+//    CUDA_CHECK( cudaFree(dCsrRowPtrA) );
+//
+//    cudaDeviceSynchronize();
+//}
 
 ///////////////////////////////////////////////////////////////////////////////
 // I/O ops
@@ -313,7 +313,10 @@ void volume2sparse(const cusparseHandle_t handle, const cusparseMatDescr_t descr
 void DHMProcessor::load_image(std::string path)
 {
     cv::Mat mat = cv::imread(path, CV_LOAD_IMAGE_GRAYSCALE);
-    if ( mat.cols != N || mat.rows != N ) DHM_ERROR("Images must be of size NxN");
+    if ( mat.cols != N || mat.rows != N )
+        DHM_ERROR("Image " + path + " is of size " +
+                  std::to_string(mat.rows) + "x" + std::to_string(mat.cols) +
+                  ", must be of size 1024x1024");
 
     memcpy(h_frame, mat.data, N*N*sizeof(byte));
 
@@ -330,86 +333,126 @@ void DHMProcessor::save_image(std::string path)
     cv::imwrite(path, mat);
 }
 
+// I made no attempt at this being fast
+void DHMProcessor::save_volume(std::string path)
+{
+    using namespace boost::filesystem;
+
+    if ( !create_directory(path) ) DHM_ERROR("Cannot create output folder");
+
+    cv::Mat mat_b(N, N, CV_8U);
+    cv::Mat mat(N, N, CV_32F);
+
+    int n = std::to_string(num_slices).length();
+    char *buf = new char[n+1];
+    std::string fmt = "%" + std::to_string(n) + "d";
+
+    for (int i = 0; i < num_slices; i++)
+    {
+        CUDA_CHECK( cudaMemcpy(mat.data, d_volume + i*N*N, N*N*sizeof(float), cudaMemcpyDeviceToHost) );
+        cv::normalize(mat, mat, 1.0, 0.0, cv::NORM_MINMAX, -1);
+        mat.convertTo(mat_b, CV_8U, 255.f);
+        sprintf(buf, fmt.c_str(), i);
+        cv::imwrite(path + "/" + std::string(buf) + ".tif", mat_b);
+    }
+
+    delete[] buf;
+}
+
+//void DHMProcessor::load_volume(std::string path, float *volume)
+//{
+//    using namespace boost::filesystem;
+//
+//    path = check_dir(path);
+//
+//    for (int i = 0; i < num_slices; i++)
+//    {
+//        cv::Mat mat(N, N, CV_32F, volume + i*N*N);
+//        cv::Mat mat_b = cv::imread(path + "/" + std::to_string(i) + ".bmp", CV_LOAD_IMAGE_GRAYSCALE);
+//        mat_b.convertTo(mat, CV_32F, 1.f / 255.f);
+//    }
+//}
+
 // compress 3D volume to COO and save
 // this method is bad and slow, for a few reasons... consider as placeholder
 // separate CPU write thread would be nice
-void DHMProcessor::save_volume(std::string path)
-{
-    // wait to finish
-//    if (save_thread.joinable())
-//        TIMER( save_thread.join() );
+//void DHMProcessor::save_volume(std::string path)
+//{
+//    // wait to finish
+////    if (save_thread.joinable())
+////        TIMER( save_thread.join() );
+//
+////    save_thread = std::thread([=](){
+//    float *d_v;
+//    int *d_x, *d_y, *d_z;
+//    int nnz;
+//
+//    std::ofstream f(path, std::ios::out | std::ios::binary);
+//
+//    if (memory_kind == DHM_STANDARD_MEM)
+//    {
+//        volume2sparse(handle, descr, d_volume, &d_x, N, &d_y, N, &d_z, num_slices, &d_v, &nnz);
+//
+//        char *buffer = new char[nnz*(3*sizeof(int)+sizeof(float))];
+//
+//        CUDA_CHECK( cudaMemcpy(buffer, d_x, nnz*sizeof(int), cudaMemcpyDeviceToHost) );
+//        CUDA_CHECK( cudaMemcpy(buffer + nnz*sizeof(int), d_y, nnz*sizeof(int), cudaMemcpyDeviceToHost) );
+//        CUDA_CHECK( cudaMemcpy(buffer + 2*nnz*sizeof(int), d_z, nnz*sizeof(int), cudaMemcpyDeviceToHost) );
+//        CUDA_CHECK( cudaMemcpy(buffer + 3*nnz*sizeof(int), d_v, nnz*sizeof(float), cudaMemcpyDeviceToHost) );
+//
+//        f.write(buffer, 4*nnz*sizeof(int));
+//
+//        delete[] buffer;
+//    }
+//    else
+//    {
+//        int *h_x, *h_y, *h_z;
+//        float *h_v;
+//
+//        volume2sparse(handle, descr,
+//                      d_volume, &d_x, N, &d_y, N, &d_z, num_slices, &d_v, &nnz,
+//                      true, &h_x, &h_y, &h_z, &h_v);
+//
+//        f.write((char *)h_x, nnz*sizeof(int));
+//        f.write((char *)h_y, nnz*sizeof(int));
+//        f.write((char *)h_z, nnz*sizeof(int));
+//        f.write((char *)h_v, nnz*sizeof(float));
+//    }
+//
+//    f.close();
+////    });
+//}
 
-//    save_thread = std::thread([=](){
-    float *d_v;
-    int *d_x, *d_y, *d_z;
-    int nnz;
-
-    std::ofstream f(path, std::ios::out | std::ios::binary);
-
-    if (memory_kind == DHM_STANDARD_MEM)
-    {
-        volume2sparse(handle, descr, d_volume, &d_x, N, &d_y, N, &d_z, num_slices, &d_v, &nnz);
-
-        char *buffer = new char[nnz*(3*sizeof(int)+sizeof(float))];
-
-        CUDA_CHECK( cudaMemcpy(buffer, d_x, nnz*sizeof(int), cudaMemcpyDeviceToHost) );
-        CUDA_CHECK( cudaMemcpy(buffer + nnz*sizeof(int), d_y, nnz*sizeof(int), cudaMemcpyDeviceToHost) );
-        CUDA_CHECK( cudaMemcpy(buffer + 2*nnz*sizeof(int), d_z, nnz*sizeof(int), cudaMemcpyDeviceToHost) );
-        CUDA_CHECK( cudaMemcpy(buffer + 3*nnz*sizeof(int), d_v, nnz*sizeof(float), cudaMemcpyDeviceToHost) );
-
-        f.write(buffer, 4*nnz*sizeof(int));
-
-        delete[] buffer;
-    }
-    else
-    {
-        int *h_x, *h_y, *h_z;
-        float *h_v;
-
-        volume2sparse(handle, descr,
-                      d_volume, &d_x, N, &d_y, N, &d_z, num_slices, &d_v, &nnz,
-                      true, &h_x, &h_y, &h_z, &h_v);
-
-        f.write((char *)h_x, nnz*sizeof(int));
-        f.write((char *)h_y, nnz*sizeof(int));
-        f.write((char *)h_z, nnz*sizeof(int));
-        f.write((char *)h_v, nnz*sizeof(float));
-    }
-
-    f.close();
-//    });
-}
-
-void DHMProcessor::load_volume(std::string path, float *h_volume)
-{
-    std::ifstream f(path, std::ios::in | std::ios::binary);
-
-    f.seekg(0, f.end);
-    int nnz = f.tellg() / (4 * sizeof(int));
-    f.seekg(0, f.beg);
-
-    if (nnz == 0) DHM_ERROR("Empty file");
-
-    float *v = new float[nnz];
-    int *x = new int[nnz];
-    int *y = new int[nnz];
-    int *z = new int[nnz];
-
-    f.read((char *)x, nnz*sizeof(int));
-    f.read((char *)y, nnz*sizeof(int));
-    f.read((char *)z, nnz*sizeof(int));
-    f.read((char *)v, nnz*sizeof(float));
-
-    for (int i = 0; i < nnz; i++)
-    {
-        h_volume[z[i]*N*N+y[i]*N+x[i]] = v[i];
-    }
-
-    delete[] x;
-    delete[] y;
-    delete[] z;
-    delete[] v;
-}
+//void DHMProcessor::load_volume(std::string path, float *h_volume)
+//{
+//    std::ifstream f(path, std::ios::in | std::ios::binary);
+//
+//    f.seekg(0, f.end);
+//    int nnz = f.tellg() / (4 * sizeof(int));
+//    f.seekg(0, f.beg);
+//
+//    if (nnz == 0) DHM_ERROR("Empty file");
+//
+//    float *v = new float[nnz];
+//    int *x = new int[nnz];
+//    int *y = new int[nnz];
+//    int *z = new int[nnz];
+//
+//    f.read((char *)x, nnz*sizeof(int));
+//    f.read((char *)y, nnz*sizeof(int));
+//    f.read((char *)z, nnz*sizeof(int));
+//    f.read((char *)v, nnz*sizeof(float));
+//
+//    for (int i = 0; i < nnz; i++)
+//    {
+//        h_volume[z[i]*N*N+y[i]*N+x[i]] = v[i];
+//    }
+//
+//    delete[] x;
+//    delete[] y;
+//    delete[] z;
+//    delete[] v;
+//}
 
 void DHMProcessor::display_image(byte *h_image)
 {
@@ -419,12 +462,14 @@ void DHMProcessor::display_image(byte *h_image)
     cv::waitKey(0);
 }
 
-void DHMProcessor::display_volume(float *h_volume)
+void DHMProcessor::display_volume(float *h_volume, bool inv)
 {
     for (int i = 0; i < num_slices; i++)
     {
         cv::Mat mat(N, N, CV_32F, h_volume + i*N*N);
         cv::normalize(mat, mat, 1.0, 0.0, cv::NORM_MINMAX, -1);
+        if (inv)
+            cv::subtract(1.0, mat, mat);
         cv::namedWindow("Display window", CV_WINDOW_NORMAL);
         cv::imshow("Display window", mat);
         cv::waitKey(0);
@@ -458,7 +503,7 @@ std::string check_dir(std::string path)
 }
 
 // returns an iterator through a folder in alphabetical order, optionally filtering by extension
-std::vector<std::string> iter_folder(std::string path, std::string ext = "")
+std::vector<std::string> iter_folder(std::string path, std::string ext)
 {
     using namespace boost::filesystem;
 
@@ -469,7 +514,8 @@ std::vector<std::string> iter_folder(std::string path, std::string ext = "")
     std::vector<std::string> dir;
     for (auto &i : boost::make_iterator_range(directory_iterator(path), {})) {
         std::string f = i.path().string();
-        if (ext.length() > 0 && f.substr(f.find_last_of(".") + 1) == ext)
+        if ( f[f.find_last_of("/")+1] != '.' &&
+             (ext.length() == 0 || ext.length() > 0 && f.substr(f.find_last_of(".") + 1) == ext) )
             dir.push_back(f);
     }
     std::sort(dir.begin(), dir.end());
@@ -495,11 +541,7 @@ DHMCallback::DHMCallback(void (*func)(float *, byte *, DHMParameters)) {
 void DHMCallback::operator()(float *img, byte *mask, DHMParameters params) {
     if (_func == nullptr)
         DHM_ERROR("Callback not set");
-    try {
-        _func(img, mask, params);
-    } catch (...) {
-        DHM_ERROR("Callback failure");
-    }
+    _func(img, mask, params);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -509,7 +551,7 @@ void DHMCallback::operator()(float *img, byte *mask, DHMParameters params) {
 bool DHMProcessor::is_initialized = false;
 
 DHMProcessor::DHMProcessor(const int num_slices, const float delta_z, const float z_init,
-                           const DHMMemoryKind memory_kind = DHM_STANDARD_MEM)
+                           const DHMMemoryKind memory_kind)
 {
     if (is_initialized) DHM_ERROR("Only a single instance of DHMProcessor is permitted");
 
@@ -585,6 +627,7 @@ void DHMProcessor::setup_cuda() {
     CUDA_CHECK( cudaMalloc(&d_image, N*N*sizeof(complex)) );
     // end result in here
     CUDA_CHECK( cudaMalloc(&d_volume, num_slices*N*N*sizeof(float)) );
+    CUDA_CHECK( cudaMalloc(&d_result, N*N*sizeof(float)) );
     // masks to toggle processing of specific slices
     // these need to be kept separate, even with unified memory
     CUDA_CHECK( cudaMallocHost(&h_mask, num_slices*sizeof(byte)) );
@@ -632,6 +675,7 @@ void DHMProcessor::cleanup_cuda()
     CUDA_CHECK( cudaFree(d_volume) );
     CUDA_CHECK( cudaFree(d_mask) );
     CUDA_CHECK( cudaFree(d_image) );
+    CUDA_CHECK( cudaFree(d_result) );
 }
 
 /*
@@ -667,68 +711,82 @@ void DHMProcessor::process_camera() {
     writer.write(frame_mat);
 }
 */
+
+// wrapper for parts of workflow common to folder and camera
+void DHMProcessor::process(std::string f_in)
+{
+    CUDA_TIMER( generate_volume() );
+
+    ////////////////////////////////////////////////////////////////////////
+    // VOLUME REDUCTION OPS GO HERE
+    ////////////////////////////////////////////////////////////////////////
+
+    // i.e. move the callback out of generate_volume
+
+    // save result
+    // save_result(f_out);
+
+    if (do_save_volume)
+    {
+        std::string f_out = output_dir + "/";
+        f_out += f_in.substr(f_in.find_last_of("/") + 1);
+        f_out = f_out.substr(0, f_out.find_last_of("."));
+        TIMER( save_volume(f_out) );
+    }
+}
+
+void DHMProcessor::ueye_callback()
+{
+    std::string f_in = "~/" + std::to_string(frame_num) + ".tif"; // temporary!!!
+    save_image(f_in);
+    process(f_in);
+    frame_num++;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Public methods
 ////////////////////////////////////////////////////////////////////////////////
 
-void DHMProcessor::process_folder(std::string input_dir, std::string output_dir)
+void DHMProcessor::process_folder(std::string input_dir, std::string output_dir, bool do_save_volume)
 {
-    input_dir = check_dir(input_dir);
-    output_dir = check_dir(output_dir);
+    if (is_running) DHM_ERROR("Can only run one operation at a time");
+    is_running = true;
 
-    for (std::string &f_in : iter_folder(input_dir, "bmp"))
+    this->do_save_volume = do_save_volume;
+
+    input_dir = check_dir(input_dir);
+    this->output_dir = check_dir(output_dir);
+
+    frame_num = 0;
+
+    for (std::string &f_in : iter_folder(input_dir))
     {
         load_image(f_in);
-
-        // save_frame(); // only for process_camera
-
-        CUDA_TIMER( process_frame() ); // *this* triggers the volume processing callback
-
-        ////////////////////////////////////////////////////////////////////////
-        // VOLUME REDUCTION OPS GO HERE
-        ////////////////////////////////////////////////////////////////////////
-
-        // semi-placeholder save operation
-        std::string f_out = output_dir + "/" + f_in.substr(f_in.find_last_of("/") + 1) + ".bin";
-        CUDA_TIMER( save_volume(f_out) );
+        process(f_in);
+        frame_num++;
     }
+
+    is_running = false;
 }
 
-/*
-// TODO: Micromanager
-void DHMProcessor::process_camera() {
-    // stub
+// acquire in realtime from UEye camera, deconvolve
+void DHMProcessor::process_ueye(float fps, std::string output_dir, bool do_save_volume, int num_frames)
+{
+    if (is_running) DHM_ERROR("Can only run one operation at a time");
+    is_running = true;
 
-    const int codec = CV_FOURCC('F','F','V','1'); // FFMPEG lossless
-    const int fps = 1;
+    this->do_save_volume = do_save_volume;
 
-    const std::time_t now = std::time(0);
-    const std::tm *ltm = std::localtime(&now);
+    this->output_dir = check_dir(output_dir);
 
-    std::string path = output_dir + "/" +
-                       std::to_string(1900 + ltm->tm_year) + "_" +
-                       std::to_string(1 + ltm->tm_mon) + "_" +
-                       std::to_string(ltm->tm_mday) + "_" +
-                       std::to_string(1 + ltm->tm_hour) + "_" +
-                       std::to_string(1 + ltm->tm_min) + "_" +
-                       std::to_string(1 + ltm->tm_sec) +
-                       ".mpg";
+    UEyeCamera ueye((char *)h_frame, N, N);
 
-    writer.open(path, codec, fps, cv::Size_<int>(N, N), false);
-    if (!writer.isOpened()) throw DHMException("Cannot open output video", __LINE__, __FILE__);
-    // async
-    // also needs to save images
+    frame_num = 0;
 
-    // Ueye stuff...
+    ueye.captureVideoAsync(fps, [&](){ ueye_callback(); }, num_frames, [&](){ this->is_running = false; });
 
-
-    // save the raw video feed too
-    // this could happen in another thread, don't think it'll take that long though
-    cv::Mat frame_mat(N, N, CV_8U, frame);
-    writer.write(frame_mat);
+    // TODO: currently i have no interrupt mechanism
 }
-*/
 
 // will I expose the callback object or no?
 void DHMProcessor::set_callback(DHMCallback cb)
@@ -736,20 +794,12 @@ void DHMProcessor::set_callback(DHMCallback cb)
     callback = cb;
 }
 
-void DHMProcessor::view_volume(std::string f_in)
-{
-    float *h_volume = new float[N*N*num_slices];
-    load_volume(f_in, h_volume);
-    display_volume(h_volume);
-    delete[] h_volume;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // The actual deconvolution
 ////////////////////////////////////////////////////////////////////////////////
 
 // this would be a CALLBACK (no - but part of one, load/store ops...)
-void DHMProcessor::process_frame()
+void DHMProcessor::generate_volume()
 {
     // start transferring filter quadrants to alternating buffer, for *next* frame
     // ... waiting for previous ops to finish first
@@ -757,6 +807,7 @@ void DHMProcessor::process_frame()
     cudaMemcpy3DParms p = memcpy3d_params;
     p.dstPtr.ptr = d_filter[!buffer_pos];
     CUDA_CHECK( cudaMemcpy3DAsync(&p, async_stream) );
+
 
     // convert 8-bit image to real channel of complex float
     _b2c<<<N, N>>>(d_frame, d_image);
