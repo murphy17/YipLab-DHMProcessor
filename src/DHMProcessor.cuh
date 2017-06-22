@@ -8,7 +8,7 @@
 #pragma once
 
 #include "DHMCommon.cuh"
-#include "UEyeCamera/UEyeCamera.hpp"
+//#include "UEyeCamera/UEyeCamera.hpp"
 
 namespace YipLab {
 
@@ -38,7 +38,7 @@ private:
     void ifft_stack(complex *, const byte *);
     void mod_stack(const complex *, float *, const byte *);
 
-    void ueye_callback();
+//    void ueye_callback();
     void process(std::string);
     void load_image(std::string);
     void save_image(std::string);
@@ -76,14 +76,14 @@ private:
     const cudaDataType fft_type = CUDA_C_32F;
     long long fft_dims[2] = {N, N};
     size_t fft_work_size = 0;
-    cusparseHandle_t handle = 0; // CUSparse
-    cusparseMatDescr_t descr = 0;
+//    cusparseHandle_t handle = 0; // CUSparse
+//    cusparseMatDescr_t descr = 0;
 
 public:
-    DHMProcessor(const int, const float, const float, const DHMMemoryKind = DHM_STANDARD_MEM);
+    DHMProcessor(const int, const float, const float);
     ~DHMProcessor();
 
-    void process_ueye(float, std::string, bool, int = -1);
+//    void process_ueye(float, std::string, bool, int = -1);
     void process_folder(std::string, std::string, bool);
 
     // should this be in constructor?

@@ -49,13 +49,8 @@
 							<tool commandLinePattern="${COMMAND} ${FLAGS} ${OUTPUT_FLAG} ${OUTPUT_PREFIX} ${OUTPUT} ${INPUTS}" id="nvcc.linker.base.101957943" name="NVCC Linker" superClass="nvcc.linker.base">
 								<option id="nvcc.linker.option.libs.1694686809" name="Libraries (-l)" superClass="nvcc.linker.option.libs" valueType="libs">
 									<listOptionValue builtIn="false" value="opencv_core"/>
-									<listOptionValue builtIn="false" value="ueye_api"/>
 									<listOptionValue builtIn="false" value="pthread"/>
-									<listOptionValue builtIn="false" value="opencv_cudaimgproc"/>
-									<listOptionValue builtIn="false" value="opencv_cudafilters"/>
-									<listOptionValue builtIn="false" value="opencv_cudaarithm"/>
 									<listOptionValue builtIn="false" value="opencv_imgproc"/>
-									<listOptionValue builtIn="false" value="cusparse"/>
 									<listOptionValue builtIn="false" value="opencv_video"/>
 									<listOptionValue builtIn="false" value="opencv_videoio"/>
 									<listOptionValue builtIn="false" value="opencv_highgui"/>

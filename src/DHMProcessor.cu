@@ -550,20 +550,17 @@ void DHMCallback::operator()(float *img, byte *mask, DHMParameters params) {
 
 bool DHMProcessor::is_initialized = false;
 
-DHMProcessor::DHMProcessor(const int num_slices, const float delta_z, const float z_init,
-                           const DHMMemoryKind memory_kind)
+DHMProcessor::DHMProcessor(const int num_slices, const float delta_z, const float z_init)
 {
     if (is_initialized) DHM_ERROR("Only a single instance of DHMProcessor is permitted");
 
     this->num_slices = num_slices;
     this->delta_z = delta_z;
     this->z_init = z_init;
-    this->memory_kind = memory_kind;
+    this->memory_kind = DHM_STANDARD_MEM; // unified mem doesn't give worthwhile speedup
 
     // allocate various buffers / handles
     setup_cuda();
-
-    // save_thread = std::thread([](){});
 
     // pack parameters (for kernels)
     params.N = N;
@@ -634,10 +631,10 @@ void DHMProcessor::setup_cuda() {
     CUDA_CHECK( cudaMalloc(&d_mask, num_slices*sizeof(byte)) );
 
     // setup sparse save - just proof of concept, this is really slow
-    CUDA_CHECK( cusparseCreate(&handle) );
-    CUDA_CHECK( cusparseCreateMatDescr(&descr) );
-    CUDA_CHECK( cusparseSetMatType(descr, CUSPARSE_MATRIX_TYPE_GENERAL) );
-    CUDA_CHECK( cusparseSetMatIndexBase(descr, CUSPARSE_INDEX_BASE_ZERO) );
+//    CUDA_CHECK( cusparseCreate(&handle) );
+//    CUDA_CHECK( cusparseCreateMatDescr(&descr) );
+//    CUDA_CHECK( cusparseSetMatType(descr, CUSPARSE_MATRIX_TYPE_GENERAL) );
+//    CUDA_CHECK( cusparseSetMatIndexBase(descr, CUSPARSE_INDEX_BASE_ZERO) );
 
     // generate parameters for filter quadrant copy
     memcpy3d_params = { 0 };
@@ -657,8 +654,8 @@ void DHMProcessor::setup_cuda() {
 
 void DHMProcessor::cleanup_cuda()
 {
-    CUDA_CHECK( cusparseDestroyMatDescr(descr) );
-    CUDA_CHECK( cusparseDestroy(handle) );
+//    CUDA_CHECK( cusparseDestroyMatDescr(descr) );
+//    CUDA_CHECK( cusparseDestroy(handle) );
 
     CUDA_CHECK( cufftDestroy(fft_plan) );
 
@@ -735,13 +732,15 @@ void DHMProcessor::process(std::string f_in)
     }
 }
 
-void DHMProcessor::ueye_callback()
-{
-    std::string f_in = "~/" + std::to_string(frame_num) + ".tif"; // temporary!!!
-    save_image(f_in);
-    process(f_in);
-    frame_num++;
-}
+//void DHMProcessor::ueye_callback()
+//{
+//    // this following line is brittle -- should properly pull out path parts
+//    std::string f_in = "~/" + std::to_string(frame_num) + ".tif";
+//
+//    save_image(f_in);
+//    process(f_in);
+//    frame_num++;
+//}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Public methods
@@ -761,7 +760,7 @@ void DHMProcessor::process_folder(std::string input_dir, std::string output_dir,
 
     for (std::string &f_in : iter_folder(input_dir))
     {
-        load_image(f_in);
+        TIMER( load_image(f_in) );
         process(f_in);
         frame_num++;
     }
@@ -770,23 +769,23 @@ void DHMProcessor::process_folder(std::string input_dir, std::string output_dir,
 }
 
 // acquire in realtime from UEye camera, deconvolve
-void DHMProcessor::process_ueye(float fps, std::string output_dir, bool do_save_volume, int num_frames)
-{
-    if (is_running) DHM_ERROR("Can only run one operation at a time");
-    is_running = true;
-
-    this->do_save_volume = do_save_volume;
-
-    this->output_dir = check_dir(output_dir);
-
-    UEyeCamera ueye((char *)h_frame, N, N);
-
-    frame_num = 0;
-
-    ueye.captureVideoAsync(fps, [&](){ ueye_callback(); }, num_frames, [&](){ this->is_running = false; });
-
-    // TODO: currently i have no interrupt mechanism
-}
+//void DHMProcessor::process_ueye(float fps, std::string output_dir, bool do_save_volume, int num_frames)
+//{
+//    if (is_running) DHM_ERROR("Can only run one operation at a time");
+//    is_running = true;
+//
+//    this->do_save_volume = do_save_volume;
+//
+//    this->output_dir = check_dir(output_dir);
+//
+//    UEyeCamera ueye((char *)h_frame, N, N);
+//
+//    frame_num = 0;
+//
+//    ueye.captureVideoAsync(fps, [&](){ ueye_callback(); }, num_frames, [&](){ this->is_running = false; });
+//
+//    // TODO: currently i have no interrupt mechanism
+//}
 
 // will I expose the callback object or no?
 void DHMProcessor::set_callback(DHMCallback cb)
@@ -803,11 +802,10 @@ void DHMProcessor::generate_volume()
 {
     // start transferring filter quadrants to alternating buffer, for *next* frame
     // ... waiting for previous ops to finish first
-    CUDA_CHECK( cudaDeviceSynchronize() );
+//    CUDA_CHECK( cudaDeviceSynchronize() );
     cudaMemcpy3DParms p = memcpy3d_params;
     p.dstPtr.ptr = d_filter[!buffer_pos];
     CUDA_CHECK( cudaMemcpy3DAsync(&p, async_stream) );
-
 
     // convert 8-bit image to real channel of complex float
     _b2c<<<N, N>>>(d_frame, d_image);

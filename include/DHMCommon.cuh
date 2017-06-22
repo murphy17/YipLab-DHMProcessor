@@ -19,7 +19,7 @@
 #include <thread>
 #include <atomic>
 
-#include <cusparse_v2.h>
+//#include <cusparse_v2.h>
 #include <cufftXt.h>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
