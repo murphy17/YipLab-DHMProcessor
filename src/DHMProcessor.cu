@@ -802,7 +802,7 @@ void DHMProcessor::generate_volume()
 {
     // start transferring filter quadrants to alternating buffer, for *next* frame
     // ... waiting for previous ops to finish first
-//    CUDA_CHECK( cudaDeviceSynchronize() );
+    CUDA_CHECK( cudaDeviceSynchronize() );
     cudaMemcpy3DParms p = memcpy3d_params;
     p.dstPtr.ptr = d_filter[!buffer_pos];
     CUDA_CHECK( cudaMemcpy3DAsync(&p, async_stream) );

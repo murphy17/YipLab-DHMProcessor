@@ -62,16 +62,14 @@ int main(int argc, char* argv[])
 
 //    string input_dir = "~/image_store/Murphy_Michael/dhm_in/spheres";
 //    string output_dir = "~/image_store/Murphy_Michael/dhm_out/spheres";
-    string input_dir = "~/dhm_in/spheres";
-    string output_dir = "~/dhm_out/spheres";
 
-//    string input_dir = "~/image_store/Murphy_Michael/dhm_in/ruler";
-//    string output_dir = "~/image_store/Murphy_Michael/dhm_out/ruler";
+    string input_dir = "~/image_store/Murphy_Michael/dhm_in/ruler";
+    string output_dir = "~/image_store/Murphy_Michael/dhm_out/ruler";
 
     int num_slices = 100;
     float delta_z = 1.0f;
     float z_init = 30.0f;
-    bool save_volume = true;
+    bool save_volume = false;
 
     DHMProcessor dhm(num_slices, delta_z, z_init);
 
