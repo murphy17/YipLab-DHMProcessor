@@ -16,7 +16,7 @@ void ImageReader::run() // max_frames
     // watch the folder
     _thread = std::thread([&](){
         try {
-            while (true)
+            while (std::atomic_load(&_stop) == 0)
             {
                 std::vector<fs::path> new_files;
 
@@ -66,6 +66,8 @@ void ImageReader::get(Image *dst)
     _queue->pop_back(dst);
 }
 
+// there is an important case where this won't work!
+// it's if you run out of files - consumer thread will be forever stuck in wait mode
 void ImageReader::stop()
 {
     _stop++;

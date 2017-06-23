@@ -58,14 +58,24 @@ int main(int argc, char* argv[])
 {
     using namespace std;
 
-    string input_dir = string(argv[1]); // "~/image_store/Murphy_Michael/dhm_in/spheres";
-    string output_dir = string(argv[2]); // "~/image_store/Murphy_Michael/dhm_out/spheres";
+    string input_dir, output_dir;
+
+    if (argc < 3)
+    {
+        input_dir = "~/image_store/Murphy_Michael/dhm_in/spheres";
+        output_dir = "~/image_store/Murphy_Michael/dhm_out/spheres";
+    }
+    else
+    {
+        input_dir = string(argv[1]);
+        output_dir = string(argv[2]);
+    }
 
     int num_slices = 100;
     float delta_z = 1.0f;
     float z_init = 30.0f;
     bool save_volume = false;
-    int max_frames = -1;
+    int max_frames = 20;
 
     DHMProcessor dhm(num_slices, delta_z, z_init);
 

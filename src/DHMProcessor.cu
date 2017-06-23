@@ -344,7 +344,6 @@ std::vector<fs::path> iter_folder(fs::path path, std::string ext)
     path = check_dir(path);
 
     // loop thru bitmap files in input folder
-    // ... these would probably be a video ...
     std::vector<fs::path> dir;
     for (auto &i : boost::make_iterator_range(fs::directory_iterator(path), {})) {
         fs::path f = i.path();
