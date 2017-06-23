@@ -310,11 +310,11 @@ void _quad_mul(
 // should these happen in separate threads?
 
 // load image and push to GPU
-void DHMProcessor::load_image(std::string path)
+void DHMProcessor::load_image(fs::path path)
 {
-    cv::Mat mat = cv::imread(path, CV_LOAD_IMAGE_GRAYSCALE);
+    cv::Mat mat = cv::imread(path.string(), CV_LOAD_IMAGE_GRAYSCALE);
     if ( mat.cols != N || mat.rows != N )
-        DHM_ERROR("Image " + path + " is of size " +
+        DHM_ERROR("Image " + path.string() + " is of size " +
                   std::to_string(mat.rows) + "x" + std::to_string(mat.cols) +
                   ", must be of size 1024x1024");
 
@@ -327,36 +327,38 @@ void DHMProcessor::load_image(std::string path)
     // d_frame already mapped to h_frame in constructor if unified
 }
 
-void DHMProcessor::save_image(std::string path)
+void DHMProcessor::save_image(fs::path path)
 {
     cv::Mat mat(N, N, CV_8U, h_frame);
-    cv::imwrite(path, mat);
+    cv::imwrite(path.string(), mat);
 }
 
 // I made no attempt at this being fast
-void DHMProcessor::save_volume(std::string path)
+void DHMProcessor::save_volume(fs::path path)
 {
-    using namespace boost::filesystem;
+    cv::Mat mat(N, N, CV_8U);
 
-    if ( !create_directory(path) ) DHM_ERROR("Cannot create output folder");
+    cv::cuda::GpuMat d_mat_norm(N, N, CV_32F);
+    cv::cuda::GpuMat d_mat_byte(N, N, CV_8U);
 
-    cv::Mat mat_b(N, N, CV_8U);
-    cv::Mat mat(N, N, CV_32F);
-
-    int n = std::to_string(num_slices).length();
-    char *buf = new char[n+1];
-    std::string fmt = "%" + std::to_string(n) + "d";
-
-    for (int i = 0; i < num_slices; i++)
+    TinyTIFFFile* tif = TinyTIFFWriter_open(path.string().c_str(), 8, N, N);
+    if (tif)
     {
-        CUDA_CHECK( cudaMemcpy(mat.data, d_volume + i*N*N, N*N*sizeof(float), cudaMemcpyDeviceToHost) );
-        cv::normalize(mat, mat, 1.0, 0.0, cv::NORM_MINMAX, -1);
-        mat.convertTo(mat_b, CV_8U, 255.f);
-        sprintf(buf, fmt.c_str(), i);
-        cv::imwrite(path + "/" + std::string(buf) + ".tif", mat_b);
+        for (int i = 0; i < num_slices; i++)
+        {
+            cv::cuda::GpuMat d_mat(N, N, CV_32F, d_volume + i*N*N);
+            cv::cuda::normalize(d_mat, d_mat_norm, 1.0, 0.0, cv::NORM_MINMAX, -1);
+            d_mat_norm.convertTo(d_mat_byte, CV_8U, 255.f);
+            d_mat_byte.download(mat);
+            TinyTIFFWriter_writeImage(tif, mat.data);
+        }
+    }
+    else
+    {
+        DHM_ERROR("Could not write " + path.string());
     }
 
-    delete[] buf;
+    TinyTIFFWriter_close(tif);
 }
 
 //void DHMProcessor::load_volume(std::string path, float *volume)
@@ -486,13 +488,13 @@ void DHMProcessor::display_volume(float *h_volume, bool inv)
 ////////////////////////////////////////////////////////////////////////////////
 
 // make sure the input directory exists, and resolve any symlinks
-std::string check_dir(std::string path)
+fs::path check_dir(fs::path path)
 {
     using namespace boost::filesystem;
 
-    if (path[0] == '~')
+    if (path.string()[0] == '~')
     {
-        path = std::string(std::getenv("HOME")) + path.substr(1, path.size()-1);
+        path = fs::path(std::string(std::getenv("HOME")) + path.string().substr(1, path.string().size()-1));
     }
 
     path = canonical(path).string(); // resolve symlinks
@@ -503,22 +505,23 @@ std::string check_dir(std::string path)
 }
 
 // returns an iterator through a folder in alphabetical order, optionally filtering by extension
-std::vector<std::string> iter_folder(std::string path, std::string ext)
+std::vector<fs::path> iter_folder(fs::path path, std::string ext)
 {
-    using namespace boost::filesystem;
-
     path = check_dir(path);
 
     // loop thru bitmap files in input folder
     // ... these would probably be a video ...
-    std::vector<std::string> dir;
-    for (auto &i : boost::make_iterator_range(directory_iterator(path), {})) {
-        std::string f = i.path().string();
-        if ( f[f.find_last_of("/")+1] != '.' &&
-             (ext.length() == 0 || ext.length() > 0 && f.substr(f.find_last_of(".") + 1) == ext) )
+    std::vector<fs::path> dir;
+    for (auto &i : boost::make_iterator_range(fs::directory_iterator(path), {})) {
+        fs::path f = i.path();
+        if ( f.stem().string().size() > 0 && f.stem().string()[0] != '.' &&
+             (ext.length() == 0 || ext.length() > 0 && f.extension().string() == ext) )
             dir.push_back(f);
     }
-    std::sort(dir.begin(), dir.end());
+    std::sort(dir.begin(), dir.end(), [](const fs::path &a, const fs::path &b) -> bool
+                                      {
+                                          return strnatcmp(a.stem().c_str(), b.stem().c_str()) < 0;
+                                      });
 
     if ( dir.size() == 0 ) DHM_ERROR("No matching files found");
 
@@ -710,7 +713,7 @@ void DHMProcessor::process_camera() {
 */
 
 // wrapper for parts of workflow common to folder and camera
-void DHMProcessor::process(std::string f_in)
+void DHMProcessor::process(fs::path input_path)
 {
     CUDA_TIMER( generate_volume() );
 
@@ -725,10 +728,9 @@ void DHMProcessor::process(std::string f_in)
 
     if (do_save_volume)
     {
-        std::string f_out = output_dir + "/";
-        f_out += f_in.substr(f_in.find_last_of("/") + 1);
-        f_out = f_out.substr(0, f_out.find_last_of("."));
-        TIMER( save_volume(f_out) );
+        fs::path output_path = fs::path(output_dir.string() + "/" +
+                                        input_path.filename().stem().string() + ".tiff");
+        TIMER( save_volume(output_path) );
     }
 }
 
@@ -746,7 +748,7 @@ void DHMProcessor::process(std::string f_in)
 // Public methods
 ////////////////////////////////////////////////////////////////////////////////
 
-void DHMProcessor::process_folder(std::string input_dir, std::string output_dir, bool do_save_volume)
+void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool do_save_volume)
 {
     if (is_running) DHM_ERROR("Can only run one operation at a time");
     is_running = true;
@@ -758,7 +760,7 @@ void DHMProcessor::process_folder(std::string input_dir, std::string output_dir,
 
     frame_num = 0;
 
-    for (std::string &f_in : iter_folder(input_dir))
+    for (fs::path &f_in : iter_folder(input_dir))
     {
         TIMER( load_image(f_in) );
         process(f_in);

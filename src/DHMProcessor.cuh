@@ -20,8 +20,8 @@ __global__ void _gen_filter_slice(complex*, const float, const DHMParameters);
 __global__ void _quad_mul(complex*, const complex*, const byte*, const DHMParameters);
 
 // misc helper stuff
-std::vector<std::string> iter_folder(std::string, std::string = "");
-std::string check_dir(std::string);
+std::vector<fs::path> iter_folder(fs::path, std::string = "");
+fs::path check_dir(fs::path);
 
 class DHMProcessor
 {
@@ -39,11 +39,11 @@ private:
     void mod_stack(const complex *, float *, const byte *);
 
 //    void ueye_callback();
-    void process(std::string);
-    void load_image(std::string);
-    void save_image(std::string);
+    void process(fs::path);
+    void load_image(fs::path);
+    void save_image(fs::path);
     void generate_volume();
-    void save_volume(std::string);
+    void save_volume(fs::path);
 
     void display_image(byte *);
     void display_volume(float *, bool);
@@ -54,7 +54,7 @@ private:
     float z_init;
     DHMMemoryKind memory_kind; // presently this doesn't do that much
     bool do_save_volume;
-    std::string output_dir;
+    fs::path output_dir;
 
     // internal parameters
     static bool is_initialized; // singleton
@@ -84,7 +84,7 @@ public:
     ~DHMProcessor();
 
 //    void process_ueye(float, std::string, bool, int = -1);
-    void process_folder(std::string, std::string, bool);
+    void process_folder(fs::path, fs::path, bool);
 
     // should this be in constructor?
     void set_callback(DHMCallback);

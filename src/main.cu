@@ -69,7 +69,7 @@ int main(int argc, char* argv[])
     int num_slices = 100;
     float delta_z = 1.0f;
     float z_init = 30.0f;
-    bool save_volume = false;
+    bool save_volume = true;
 
     DHMProcessor dhm(num_slices, delta_z, z_init);
 

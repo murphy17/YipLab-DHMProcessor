@@ -23,11 +23,16 @@
 #include <cufftXt.h>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
+#include <opencv2/cudaarithm.hpp>
 #include <boost/range.hpp>
 #include <boost/filesystem.hpp>
 
 #include "common.h"
 #include "util.cuh"
+#include "TinyTIFF/tinytiffwriter.h"
+#include "strnatcmp/strnatcmp.h"
+
+namespace fs = boost::filesystem;
 
 namespace YipLab {
 
