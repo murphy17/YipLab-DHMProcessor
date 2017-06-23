@@ -57,6 +57,7 @@ private:
     void load_image(fs::path);
     void save_image(fs::path);
     void generate_volume();
+    void save_depth(fs::path);
     void save_volume(fs::path);
 
     void display_image(byte *);
@@ -82,7 +83,8 @@ private:
     byte *h_frame, *h_mask, *d_frame, *d_mask;
     complex *h_filter, *d_image;
     complex *d_filter[N_BUF]; // multiple buffering
-    float *d_volume, *d_result;
+    float *d_volume, *d_depth;
+    float *h_depth;
     int buffer_pos;
     cudaStream_t stream[N_BUF];
     cudaMemcpy3DParms memcpy3d_params;

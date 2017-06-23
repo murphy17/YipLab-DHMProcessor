@@ -275,13 +275,32 @@ void DHMProcessor::load_image(fs::path path)
     // d_frame already mapped to h_frame in constructor if unified
 }
 
-void DHMProcessor::save_image(fs::path path)
+void DHMProcessor::save_depth(fs::path path)
 {
-    cv::Mat mat(N, N, CV_8U, h_frame);
-    cv::imwrite(path.string(), mat);
+    TinyTIFFFile* tif = TinyTIFFWriter_open(path.string().c_str(), 8, N, N);
+
+    if (tif)
+    {
+        // allocation in here because idk if 8-bit depth suffices
+        CUDA_CHECK( cudaMemcpy(h_depth, d_depth, N*N*sizeof(float), cudaMemcpyDeviceToHost) );
+
+        cv::Mat mat_32f(N, N, CV_32F, h_depth);
+        cv::Mat mat_8u(N, N, CV_8U);
+
+        // depth is normalized
+        cv::normalize(mat_32f, mat_32f, 1.0, 0.0, cv::NORM_MINMAX, -1);
+        mat_32f.convertTo(mat_8u, CV_8U, 255.f);
+
+        TinyTIFFWriter_writeImage(tif, mat_8u.data);
+    }
+    else
+    {
+        DHM_ERROR("Could not write " + path.string());
+    }
+
+    TinyTIFFWriter_close(tif);
 }
 
-// I made no attempt at this being fast
 void DHMProcessor::save_volume(fs::path path)
 {
     cv::Mat mat(N, N, CV_8U);
@@ -290,6 +309,7 @@ void DHMProcessor::save_volume(fs::path path)
     cv::cuda::GpuMat d_mat_byte(N, N, CV_8U);
 
     TinyTIFFFile* tif = TinyTIFFWriter_open(path.string().c_str(), 8, N, N);
+
     if (tif)
     {
         for (int i = 0; i < num_slices; i++)
@@ -298,6 +318,7 @@ void DHMProcessor::save_volume(fs::path path)
             cv::cuda::normalize(d_mat, d_mat_norm, 1.0, 0.0, cv::NORM_MINMAX, -1);
             d_mat_norm.convertTo(d_mat_byte, CV_8U, 255.f);
             d_mat_byte.download(mat);
+
             TinyTIFFWriter_writeImage(tif, mat.data);
         }
     }
@@ -485,7 +506,8 @@ void DHMProcessor::setup_cuda() {
     CUDA_CHECK( cudaMalloc(&d_image, N*N*sizeof(complex)) );
     // end result in here
     CUDA_CHECK( cudaMalloc(&d_volume, num_slices*N*N*sizeof(float)) );
-    CUDA_CHECK( cudaMalloc(&d_result, N*N*sizeof(float)) );
+    CUDA_CHECK( cudaMalloc(&d_depth, N*N*sizeof(float)) );
+    CUDA_CHECK( cudaMallocHost(&h_depth, N*N*sizeof(float)) );
     // masks to toggle processing of specific slices
     // these need to be kept separate, even with unified memory
     CUDA_CHECK( cudaMallocHost(&h_mask, num_slices*sizeof(byte)) );
@@ -520,6 +542,7 @@ void DHMProcessor::cleanup_cuda()
     CUDA_CHECK( cudaFreeHost(h_frame) );
     CUDA_CHECK( cudaFreeHost(h_filter) );
     CUDA_CHECK( cudaFreeHost(h_mask) );
+    CUDA_CHECK( cudaFreeHost(h_depth) );
 
     for (int i = 0; i < N_BUF; i++)
         CUDA_CHECK( cudaFree(d_filter[i]) );
@@ -528,28 +551,32 @@ void DHMProcessor::cleanup_cuda()
     CUDA_CHECK( cudaFree(d_volume) );
     CUDA_CHECK( cudaFree(d_mask) );
     CUDA_CHECK( cudaFree(d_image) );
-    CUDA_CHECK( cudaFree(d_result) );
+    CUDA_CHECK( cudaFree(d_depth) );
 }
 
 // wrapper for parts of workflow common to folder and camera
 void DHMProcessor::process(fs::path input_path)
 {
+    std::string f_str = output_dir.string() + "/" + input_path.filename().stem().string();
+
     generate_volume();
 
     ////////////////////////////////////////////////////////////////////////
-    // VOLUME REDUCTION OPS GO HERE
+    // VOLUME REDUCTION / DEPTH MAP GENERATION OPS GO HERE
     ////////////////////////////////////////////////////////////////////////
 
     // i.e. move the callback out of generate_volume
 
-    // save result
-    // save_result(f_out);
+    // save depth map
+
+    // disabled for now, depth map not implemented
+//    fs::path depth_path = fs::path(f_str + "_depth.tiff");
+//    save_depth(depth_path);
 
     if (do_save_volume)
     {
-        fs::path output_path = fs::path(output_dir.string() + "/" +
-                                        input_path.filename().stem().string() + ".tiff");
-        save_volume(output_path);
+        fs::path volume_path = fs::path(f_str + "_volume.tiff");
+        save_volume(volume_path);
     }
 }
 
@@ -566,6 +593,12 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
 
     input_dir = check_dir(input_dir);
     this->output_dir = check_dir(output_dir);
+
+    if (max_frames == 0)
+    {
+        for (auto &it : boost::make_iterator_range(fs::directory_iterator(input_dir), {}))
+            max_frames++;
+    }
 
     ImageReader queue(input_dir, 16);
     queue.run();

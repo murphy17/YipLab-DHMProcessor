@@ -59,8 +59,11 @@ int main(int argc, char* argv[])
     using namespace std;
 
     string input_dir, output_dir;
-    bool save_volume = false;
-    int max_frames = -1;
+    bool save_volume = true;
+    int max_frames = 0; //-1;
+    // -1: poll input folder forever
+    // 0: poll input folder only once
+    // nonnegative number: self explanatory
 
     if (argc < 3)
     {
