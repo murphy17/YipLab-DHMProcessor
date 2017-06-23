@@ -58,13 +58,11 @@ int main(int argc, char* argv[])
 {
     using namespace std;
 
-    // time to make these arguments i think
+    string input_dir = string(argv[1]); // "~/image_store/Murphy_Michael/dhm_in/spheres";
+    string output_dir = string(argv[2]); // "~/image_store/Murphy_Michael/dhm_out/spheres";
 
-//    string input_dir = "~/image_store/Murphy_Michael/dhm_in/spheres";
-//    string output_dir = "~/image_store/Murphy_Michael/dhm_out/spheres";
-
-    string input_dir = "~/image_store/Murphy_Michael/dhm_in/ruler";
-    string output_dir = "~/image_store/Murphy_Michael/dhm_out/ruler";
+//    string input_dir = "~/image_store/Murphy_Michael/dhm_in/ruler";
+//    string output_dir = "~/image_store/Murphy_Michael/dhm_out/ruler";
 
     int num_slices = 100;
     float delta_z = 1.0f;
@@ -79,7 +77,6 @@ int main(int argc, char* argv[])
     dhm.set_callback(DHMCallback(id_cb)); // DHM_BEFORE_FFT, DHM_AFTER_FFT
 
     // inputs must be bitmaps, of size 1024x1024
-    // and this iterates in NOT NATURAL ORDER! (prefix filenames with zeros...)
     dhm.process_folder(input_dir, output_dir, save_volume);
 
 //    float fps = 1;
