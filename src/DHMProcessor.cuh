@@ -91,8 +91,8 @@ public:
 
     // TODO: take some of these from constructor
     static const int N = 1024;
-    static constexpr float DX = (5.32f / 1024.f);
-    static constexpr float DY = (6.66f / 1280.f);
+    static constexpr float DX = 0.0051992f; //(5.32f / 1024.f);
+    static constexpr float DY = 0.0051992f; // (6.66f / 1280.f);
     static constexpr float LAMBDA0 = 0.000488f;
 };
 

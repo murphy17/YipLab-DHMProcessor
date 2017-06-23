@@ -30,6 +30,13 @@ __device__ __forceinline__ complex cmul(const complex a, const complex b)
     return c;
 }
 
+template <typename T>
+__device__ __forceinline__ T sym_get(const T *x, const int i, const int j, const int N)
+{
+    const int offset = i <= j ? i*N+j : j*N+i;
+    return x[offset];
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // Element-wise operations
 ///////////////////////////////////////////////////////////////////////////////
@@ -154,9 +161,10 @@ void DHMProcessor::build_filter_stack()
 // using fourfold symmetry of z
 __global__
 void _quad_mul(
+//    complex *f,
     complex *z,
     const __restrict__ complex *w,
-    const byte *mask,
+    const __restrict__ byte *mask,
     const DHMParameters p
 ) {
     const int i = blockIdx.x;
@@ -176,12 +184,14 @@ void _quad_mul(
             if (mask[k])
             {
                 complex z_ij = z[i*p.N+j];
+//                complex z_ij = sym_get(z, i, j, p.N);
                 z[i*p.N+j] = cmul(w1, z_ij);
                 z[ii*p.N+jj] = cmul(w4, z_ij);
                 z[ii*p.N+j] = cmul(w2, z_ij);
                 z[i*p.N+jj] = cmul(w3, z_ij);
             }
             z += p.N*p.N;
+//            f += p.N*(p.N+1)/2;
         }
     }
     else if (i>0 && i<p.N/2)
@@ -194,10 +204,12 @@ void _quad_mul(
             if (mask[k])
             {
                 complex z_ij = z[i*p.N+j];
+//                complex z_ij = sym_get(z, i, j, p.N);
                 z[i*p.N+j] = cmul(w1, z_ij);
                 z[ii*p.N+j] = cmul(w2, z_ij);
             }
             z += p.N*p.N;
+//            f += p.N*(p.N+1)/2;
         }
     }
     else if (j>0 && j<p.N/2)
@@ -210,10 +222,12 @@ void _quad_mul(
             if (mask[k])
             {
                 complex z_ij = z[i*p.N+j];
+//                complex z_ij = sym_get(z, i, j, p.N);
                 z[i*p.N+j] = cmul(w1, z_ij);
                 z[i*p.N+jj] = cmul(w2, z_ij);
             }
             z += p.N*p.N;
+//            f += p.N*(p.N+1)/2;
         }
     }
     else
@@ -225,9 +239,11 @@ void _quad_mul(
             if (mask[k])
             {
                 complex z_ij = z[i*p.N+j];
+//                complex z_ij = sym_get(z, i, j, p.N);
                 z[i*p.N+j] = cmul(w1, z_ij);
             }
             z += p.N*p.N;
+//            f += p.N*(p.N+1)/2;
         }
     }
 }
