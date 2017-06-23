@@ -65,6 +65,13 @@ public:
         m_not_full.notify_one();
     }
 
+    void clear() {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        m_unread = 0;
+        lock.unlock();
+        m_not_full.notify_one();
+    }
+
 private:
     BoundedBuffer(const BoundedBuffer&);              // Disabled copy constructor
     BoundedBuffer& operator = (const BoundedBuffer&); // Disabled assign operator

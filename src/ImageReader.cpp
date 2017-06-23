@@ -79,11 +79,10 @@ void ImageReader::get(Image *dst)
     _queue->pop_back(dst);
 }
 
-// there is an important case where this won't work!
-// it's if you run out of files - consumer thread will be forever stuck in wait mode
 void ImageReader::stop()
 {
     _stop++;
+    _queue->clear();
 }
 
 ImageReader::~ImageReader()

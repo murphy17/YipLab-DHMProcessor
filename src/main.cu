@@ -78,9 +78,11 @@ int main(int argc, char* argv[])
     float delta_y = 0.0051992f; // (6.66f / 1280.f);
     float lambda0 = 0.000488f;
     bool save_volume = false;
-    int max_frames = -1;
+    int max_frames = 20;
 
     DHMProcessor dhm(num_slices, delta_z, z_init, delta_x, delta_y, lambda0);
+
+    // thinking i'll comment out all the callback stuff. unnecessary complexity...
 
     // TODO: allow callbacks to have state, i.e. with additional params
     // have an enum -- freq / time domain?
