@@ -61,13 +61,11 @@ int main(int argc, char* argv[])
     string input_dir = string(argv[1]); // "~/image_store/Murphy_Michael/dhm_in/spheres";
     string output_dir = string(argv[2]); // "~/image_store/Murphy_Michael/dhm_out/spheres";
 
-//    string input_dir = "~/image_store/Murphy_Michael/dhm_in/ruler";
-//    string output_dir = "~/image_store/Murphy_Michael/dhm_out/ruler";
-
     int num_slices = 100;
     float delta_z = 1.0f;
     float z_init = 30.0f;
-    bool save_volume = true;
+    bool save_volume = false;
+    int max_frames = -1;
 
     DHMProcessor dhm(num_slices, delta_z, z_init);
 
@@ -77,11 +75,7 @@ int main(int argc, char* argv[])
     dhm.set_callback(DHMCallback(id_cb)); // DHM_BEFORE_FFT, DHM_AFTER_FFT
 
     // inputs must be bitmaps, of size 1024x1024
-    dhm.process_folder(input_dir, output_dir, save_volume);
-
-//    float fps = 1;
-//    int num_frames = 5;
-//    dhm.process_ueye(fps, output_dir, save_volume, num_frames);
+    CUDA_TIMER( dhm.process_folder(input_dir, output_dir, save_volume, max_frames) );
 }
 
 

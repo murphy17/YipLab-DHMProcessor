@@ -9,6 +9,7 @@
 
 #include "DHMCommon.cuh"
 //#include "UEyeCamera/UEyeCamera.hpp"
+#include "ImageReader.hpp"
 
 namespace YipLab {
 
@@ -83,8 +84,7 @@ public:
     DHMProcessor(const int, const float, const float);
     ~DHMProcessor();
 
-//    void process_ueye(float, std::string, bool, int = -1);
-    void process_folder(fs::path, fs::path, bool);
+    void process_folder(fs::path, fs::path, bool, int = -1);
 
     // should this be in constructor?
     void set_callback(DHMCallback);

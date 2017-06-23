@@ -233,77 +233,6 @@ void _quad_mul(
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Convert 3D volume to sparse
-///////////////////////////////////////////////////////////////////////////////
-
-// this interface is awful, dumb hack
-// and this method is WAY too slow
-// some notes: dX, dY fit into chars, can cast V to char; use special packet for new slice
-//void volume2sparse(const cusparseHandle_t handle, const cusparseMatDescr_t descr,
-//                   const float *vol, int **x, int m, int **y, int n, int **z, int p, float **v, int *totalNnz,
-//                   const bool unified_mem = false, int **h_x = nullptr, int **h_y = nullptr, int **h_z = nullptr, float **h_v = nullptr)
-//{
-//    int nnz;
-//    int *dNnzPerRow, *dCsrRowPtrA;
-//    CUDA_CHECK( cudaMalloc(&dNnzPerRow, m*sizeof(int)) );
-//    CUDA_CHECK( cudaMalloc(&dCsrRowPtrA, (m+1)*sizeof(int)) );
-//
-//    CUDA_CHECK( cusparseSnnz(handle, CUSPARSE_DIRECTION_ROW, m, n*p, descr, vol, m, dNnzPerRow, totalNnz) );
-//
-//    if (unified_mem)
-//    {
-//        CUDA_CHECK( cudaMallocHost(h_x, (*totalNnz)*sizeof(int)) );
-//        CUDA_CHECK( cudaMallocHost(h_y, (*totalNnz)*sizeof(int)) );
-//        CUDA_CHECK( cudaMallocHost(h_z, (*totalNnz)*sizeof(int)) );
-//        CUDA_CHECK( cudaMallocHost(h_v, (*totalNnz)*sizeof(float)) );
-//        CUDA_CHECK( cudaHostGetDevicePointer(x, *h_x, 0) );
-//        CUDA_CHECK( cudaHostGetDevicePointer(y, *h_y, 0) );
-//        CUDA_CHECK( cudaHostGetDevicePointer(z, *h_z, 0) );
-//        CUDA_CHECK( cudaHostGetDevicePointer(v, *h_v, 0) );
-//    }
-//    else
-//    {
-//        CUDA_CHECK( cudaMalloc(x, (*totalNnz)*sizeof(int)) );
-//        CUDA_CHECK( cudaMalloc(y, (*totalNnz)*sizeof(int)) );
-//        CUDA_CHECK( cudaMalloc(z, (*totalNnz)*sizeof(int)) );
-//        CUDA_CHECK( cudaMalloc(v, (*totalNnz)*sizeof(float)) );
-//    }
-//
-//    int s = 0;
-//
-//    for (int k = 0; k < p; k++)
-//    {
-//        const float *slice = vol + m * n * k;
-//
-//        int *dCooRowIndA = *x + s;
-//        int *dCsrColIndA = *y + s;
-//        float *dCsrValA = *v + s;
-//
-//        // count nonzeros in slice
-//        CUDA_CHECK( cusparseSnnz(handle, CUSPARSE_DIRECTION_ROW, m, n, descr, slice, m, dNnzPerRow, &nnz) );
-//
-//        // first get CSR matrix
-//        CUDA_CHECK( cusparseSdense2csr(handle, m, n, descr, slice, m, dNnzPerRow,
-//                                       dCsrValA, dCsrRowPtrA, dCsrColIndA) );
-//
-//        // then generate COO indices
-//        CUDA_CHECK( cusparseXcsr2coo(handle, dCsrRowPtrA, nnz, m, dCooRowIndA, CUSPARSE_INDEX_BASE_ZERO) );
-//
-//        cudaDeviceSynchronize();
-//
-//        // generate Z indices
-//        CUDA_CHECK( cudaFill(*z + s, k, nnz) );
-//
-//        s += nnz;
-//    }
-//
-//    CUDA_CHECK( cudaFree(dNnzPerRow) );
-//    CUDA_CHECK( cudaFree(dCsrRowPtrA) );
-//
-//    cudaDeviceSynchronize();
-//}
-
-///////////////////////////////////////////////////////////////////////////////
 // I/O ops
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -360,101 +289,6 @@ void DHMProcessor::save_volume(fs::path path)
 
     TinyTIFFWriter_close(tif);
 }
-
-//void DHMProcessor::load_volume(std::string path, float *volume)
-//{
-//    using namespace boost::filesystem;
-//
-//    path = check_dir(path);
-//
-//    for (int i = 0; i < num_slices; i++)
-//    {
-//        cv::Mat mat(N, N, CV_32F, volume + i*N*N);
-//        cv::Mat mat_b = cv::imread(path + "/" + std::to_string(i) + ".bmp", CV_LOAD_IMAGE_GRAYSCALE);
-//        mat_b.convertTo(mat, CV_32F, 1.f / 255.f);
-//    }
-//}
-
-// compress 3D volume to COO and save
-// this method is bad and slow, for a few reasons... consider as placeholder
-// separate CPU write thread would be nice
-//void DHMProcessor::save_volume(std::string path)
-//{
-//    // wait to finish
-////    if (save_thread.joinable())
-////        TIMER( save_thread.join() );
-//
-////    save_thread = std::thread([=](){
-//    float *d_v;
-//    int *d_x, *d_y, *d_z;
-//    int nnz;
-//
-//    std::ofstream f(path, std::ios::out | std::ios::binary);
-//
-//    if (memory_kind == DHM_STANDARD_MEM)
-//    {
-//        volume2sparse(handle, descr, d_volume, &d_x, N, &d_y, N, &d_z, num_slices, &d_v, &nnz);
-//
-//        char *buffer = new char[nnz*(3*sizeof(int)+sizeof(float))];
-//
-//        CUDA_CHECK( cudaMemcpy(buffer, d_x, nnz*sizeof(int), cudaMemcpyDeviceToHost) );
-//        CUDA_CHECK( cudaMemcpy(buffer + nnz*sizeof(int), d_y, nnz*sizeof(int), cudaMemcpyDeviceToHost) );
-//        CUDA_CHECK( cudaMemcpy(buffer + 2*nnz*sizeof(int), d_z, nnz*sizeof(int), cudaMemcpyDeviceToHost) );
-//        CUDA_CHECK( cudaMemcpy(buffer + 3*nnz*sizeof(int), d_v, nnz*sizeof(float), cudaMemcpyDeviceToHost) );
-//
-//        f.write(buffer, 4*nnz*sizeof(int));
-//
-//        delete[] buffer;
-//    }
-//    else
-//    {
-//        int *h_x, *h_y, *h_z;
-//        float *h_v;
-//
-//        volume2sparse(handle, descr,
-//                      d_volume, &d_x, N, &d_y, N, &d_z, num_slices, &d_v, &nnz,
-//                      true, &h_x, &h_y, &h_z, &h_v);
-//
-//        f.write((char *)h_x, nnz*sizeof(int));
-//        f.write((char *)h_y, nnz*sizeof(int));
-//        f.write((char *)h_z, nnz*sizeof(int));
-//        f.write((char *)h_v, nnz*sizeof(float));
-//    }
-//
-//    f.close();
-////    });
-//}
-
-//void DHMProcessor::load_volume(std::string path, float *h_volume)
-//{
-//    std::ifstream f(path, std::ios::in | std::ios::binary);
-//
-//    f.seekg(0, f.end);
-//    int nnz = f.tellg() / (4 * sizeof(int));
-//    f.seekg(0, f.beg);
-//
-//    if (nnz == 0) DHM_ERROR("Empty file");
-//
-//    float *v = new float[nnz];
-//    int *x = new int[nnz];
-//    int *y = new int[nnz];
-//    int *z = new int[nnz];
-//
-//    f.read((char *)x, nnz*sizeof(int));
-//    f.read((char *)y, nnz*sizeof(int));
-//    f.read((char *)z, nnz*sizeof(int));
-//    f.read((char *)v, nnz*sizeof(float));
-//
-//    for (int i = 0; i < nnz; i++)
-//    {
-//        h_volume[z[i]*N*N+y[i]*N+x[i]] = v[i];
-//    }
-//
-//    delete[] x;
-//    delete[] y;
-//    delete[] z;
-//    delete[] v;
-//}
 
 void DHMProcessor::display_image(byte *h_image)
 {
@@ -633,12 +467,6 @@ void DHMProcessor::setup_cuda() {
     CUDA_CHECK( cudaMallocHost(&h_mask, num_slices*sizeof(byte)) );
     CUDA_CHECK( cudaMalloc(&d_mask, num_slices*sizeof(byte)) );
 
-    // setup sparse save - just proof of concept, this is really slow
-//    CUDA_CHECK( cusparseCreate(&handle) );
-//    CUDA_CHECK( cusparseCreateMatDescr(&descr) );
-//    CUDA_CHECK( cusparseSetMatType(descr, CUSPARSE_MATRIX_TYPE_GENERAL) );
-//    CUDA_CHECK( cusparseSetMatIndexBase(descr, CUSPARSE_INDEX_BASE_ZERO) );
-
     // generate parameters for filter quadrant copy
     memcpy3d_params = { 0 };
     memcpy3d_params.srcPtr.ptr = h_filter;
@@ -678,44 +506,10 @@ void DHMProcessor::cleanup_cuda()
     CUDA_CHECK( cudaFree(d_result) );
 }
 
-/*
-void DHMProcessor::process_camera() {
-    // stub
-
-    const int codec = CV_FOURCC('F','F','V','1'); // FFMPEG lossless
-    const int fps = 1;
-
-    const std::time_t now = std::time(0);
-    const std::tm *ltm = std::localtime(&now);
-
-    std::string path = output_dir + "/" +
-                       std::to_string(1900 + ltm->tm_year) + "_" +
-                       std::to_string(1 + ltm->tm_mon) + "_" +
-                       std::to_string(ltm->tm_mday) + "_" +
-                       std::to_string(1 + ltm->tm_hour) + "_" +
-                       std::to_string(1 + ltm->tm_min) + "_" +
-                       std::to_string(1 + ltm->tm_sec) +
-                       ".mpg";
-
-    writer.open(path, codec, fps, cv::Size_<int>(N, N), false);
-    if (!writer.isOpened()) throw DHMException("Cannot open output video", __LINE__, __FILE__);
-    // async
-    // also needs to save images
-
-    // Ueye stuff...
-
-
-    // save the raw video feed too
-    // this could happen in another thread, don't think it'll take that long though
-    cv::Mat frame_mat(N, N, CV_8U, frame);
-    writer.write(frame_mat);
-}
-*/
-
 // wrapper for parts of workflow common to folder and camera
 void DHMProcessor::process(fs::path input_path)
 {
-    CUDA_TIMER( generate_volume() );
+    generate_volume();
 
     ////////////////////////////////////////////////////////////////////////
     // VOLUME REDUCTION OPS GO HERE
@@ -730,25 +524,15 @@ void DHMProcessor::process(fs::path input_path)
     {
         fs::path output_path = fs::path(output_dir.string() + "/" +
                                         input_path.filename().stem().string() + ".tiff");
-        TIMER( save_volume(output_path) );
+        save_volume(output_path);
     }
 }
-
-//void DHMProcessor::ueye_callback()
-//{
-//    // this following line is brittle -- should properly pull out path parts
-//    std::string f_in = "~/" + std::to_string(frame_num) + ".tif";
-//
-//    save_image(f_in);
-//    process(f_in);
-//    frame_num++;
-//}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Public methods
 ////////////////////////////////////////////////////////////////////////////////
 
-void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool do_save_volume)
+void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool do_save_volume, int max_frames)
 {
     if (is_running) DHM_ERROR("Can only run one operation at a time");
     is_running = true;
@@ -758,36 +542,35 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
     input_dir = check_dir(input_dir);
     this->output_dir = check_dir(output_dir);
 
+    ImageReader queue(input_dir, 16);
+    queue.run();
+
     frame_num = 0;
 
-    for (fs::path &f_in : iter_folder(input_dir))
+    while (max_frames == -1 || frame_num < max_frames)
     {
-        TIMER( load_image(f_in) );
-        process(f_in);
+        // TODO: eliminate some of these copies, there's a lot
+
+        Image img;
+        queue.get(&img);
+
+        std::cout << img.str << std::endl;
+
+        memcpy(h_frame, img.mat.data, N*N*sizeof(byte));
+
+        if (memory_kind == DHM_STANDARD_MEM)
+        {
+            CUDA_CHECK( cudaMemcpy(d_frame, h_frame, N*N*sizeof(byte), cudaMemcpyHostToDevice) );
+        }
+
+        process(img.str);
         frame_num++;
     }
 
+    queue.stop();
+
     is_running = false;
 }
-
-// acquire in realtime from UEye camera, deconvolve
-//void DHMProcessor::process_ueye(float fps, std::string output_dir, bool do_save_volume, int num_frames)
-//{
-//    if (is_running) DHM_ERROR("Can only run one operation at a time");
-//    is_running = true;
-//
-//    this->do_save_volume = do_save_volume;
-//
-//    this->output_dir = check_dir(output_dir);
-//
-//    UEyeCamera ueye((char *)h_frame, N, N);
-//
-//    frame_num = 0;
-//
-//    ueye.captureVideoAsync(fps, [&](){ ueye_callback(); }, num_frames, [&](){ this->is_running = false; });
-//
-//    // TODO: currently i have no interrupt mechanism
-//}
 
 // will I expose the callback object or no?
 void DHMProcessor::set_callback(DHMCallback cb)
