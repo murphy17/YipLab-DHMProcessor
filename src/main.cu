@@ -77,8 +77,8 @@ int main(int argc, char* argv[])
     float delta_x = 0.0051992f; //(5.32f / 1024.f);
     float delta_y = 0.0051992f; // (6.66f / 1280.f);
     float lambda0 = 0.000488f;
-    bool save_volume = true;
-    int max_frames = 20;
+    bool save_volume = false;
+    int max_frames = -1;
 
     DHMProcessor dhm(num_slices, delta_z, z_init, delta_x, delta_y, lambda0);
 

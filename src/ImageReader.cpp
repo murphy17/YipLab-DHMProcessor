@@ -40,13 +40,26 @@ void ImageReader::run() // max_frames
                     for (fs::path p : new_files)
                     {
                         cv::Mat mat;
+                        int num_tries = 0;
+                        bool f_exists = true;
+
                         do {
+                            f_exists &= fs::exists(p); // make sure file hasn't subsequently vanished
+                            if (!f_exists) break;
                             mat = cv::imread(p.string(), CV_LOAD_IMAGE_GRAYSCALE);
                             std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                        } while (mat.rows == 0);
-                        Image img = { mat, p.string() };
-                        // push to image queue; will sleep if full
-                        _queue->push_front(img);
+                        } while ( mat.rows == 0 && ++num_tries < MAX_N_TRIES );
+
+                        if ( !f_exists || num_tries == MAX_N_TRIES )
+                        {
+                            std::cout << p.string() << " read timed out" << std::endl;
+                        }
+                        else
+                        {
+                            Image img = { mat, p.string() };
+                            // push to image queue; will sleep if full
+                            _queue->push_front(img);
+                        }
                     }
 
                     latest_frame = std::atoi(new_files.back().stem().c_str());

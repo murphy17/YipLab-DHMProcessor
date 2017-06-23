@@ -95,6 +95,8 @@ private:
     std::thread _thread;
     std::atomic<int> _stop;
     std::exception_ptr _ex = nullptr;
+
+    const static int MAX_N_TRIES = 30;
 };
 
 }
