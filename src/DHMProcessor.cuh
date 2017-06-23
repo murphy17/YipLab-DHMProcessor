@@ -26,6 +26,19 @@ fs::path check_dir(fs::path);
 
 class DHMProcessor
 {
+public:
+    DHMProcessor(const int, const float, const float, const float, const float, const float);
+    ~DHMProcessor();
+
+    void process_folder(fs::path, fs::path, bool, int = -1);
+
+    // should this be in constructor?
+    void set_callback(DHMCallback);
+
+    // TODO: take some of these from constructor
+    static const int N = 1024;
+    float DX, DY, LAMBDA0;
+
 private:
     void setup_cuda();
     void cleanup_cuda();
@@ -63,37 +76,20 @@ private:
     DHMCallback callback;
     bool is_running = false;
     int frame_num = 0;
-    // std::thread save_thread;
+    static const int N_BUF = 3;
 
     // CUDA handles
     byte *h_frame, *h_mask, *d_frame, *d_mask;
     complex *h_filter, *d_image;
-    complex *d_filter[2]; // double buffering
+    complex *d_filter[N_BUF]; // multiple buffering
     float *d_volume, *d_result;
-    bool buffer_pos;
-    cudaStream_t async_stream;
+    int buffer_pos;
+    cudaStream_t stream[N_BUF];
     cudaMemcpy3DParms memcpy3d_params;
     cufftHandle fft_plan; // CUFFT
     const cudaDataType fft_type = CUDA_C_32F;
     long long fft_dims[2] = {N, N};
     size_t fft_work_size = 0;
-//    cusparseHandle_t handle = 0; // CUSparse
-//    cusparseMatDescr_t descr = 0;
-
-public:
-    DHMProcessor(const int, const float, const float);
-    ~DHMProcessor();
-
-    void process_folder(fs::path, fs::path, bool, int = -1);
-
-    // should this be in constructor?
-    void set_callback(DHMCallback);
-
-    // TODO: take some of these from constructor
-    static const int N = 1024;
-    static constexpr float DX = 0.0051992f; //(5.32f / 1024.f);
-    static constexpr float DY = 0.0051992f; // (6.66f / 1280.f);
-    static constexpr float LAMBDA0 = 0.000488f;
 };
 
 }

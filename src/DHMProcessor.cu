@@ -145,11 +145,14 @@ void DHMProcessor::build_filter_stack()
         ) );
     }
 
-    // do a 3D copy to buffer for first frame
+    // do a 3D copy to buffer for first N_BUF-1 frames
     // 3D allows transferring only a single quadrant
-    cudaMemcpy3DParms p = memcpy3d_params;
-    p.dstPtr.ptr = d_filter[0];
-    CUDA_CHECK( cudaMemcpy3D(&p) );
+    for (int i = 0; i < N_BUF-1; i++)
+    {
+        cudaMemcpy3DParms p = memcpy3d_params;
+        p.dstPtr.ptr = d_filter[i];
+        CUDA_CHECK( cudaMemcpy3D(&p) );
+    }
 
     CUDA_CHECK( cudaFree(slice) );
 }
@@ -402,13 +405,18 @@ void DHMCallback::operator()(float *img, byte *mask, DHMParameters params) {
 
 bool DHMProcessor::is_initialized = false;
 
-DHMProcessor::DHMProcessor(const int num_slices, const float delta_z, const float z_init)
+DHMProcessor::DHMProcessor(const int num_slices, const float delta_z, const float z_init,
+                           const float delta_x, const float delta_y, const float lambda0)
 {
     if (is_initialized) DHM_ERROR("Only a single instance of DHMProcessor is permitted");
 
     this->num_slices = num_slices;
     this->delta_z = delta_z;
     this->z_init = z_init;
+    this->DX = delta_x;
+    this->DY = delta_y;
+    this->LAMBDA0 = lambda0;
+
     this->memory_kind = DHM_STANDARD_MEM; // unified mem doesn't give worthwhile speedup
 
     // allocate various buffers / handles
@@ -417,9 +425,9 @@ DHMProcessor::DHMProcessor(const int num_slices, const float delta_z, const floa
     // pack parameters (for kernels)
     params.N = N;
     params.num_slices = this->num_slices;
-    params.DX = DX;
-    params.DY = DY;
-    params.LAMBDA0 = LAMBDA0;
+    params.DX = this->DX;
+    params.DY = this->DY;
+    params.LAMBDA0 = this->LAMBDA0;
     params.delta_z = this->delta_z;
     params.z_init = this->z_init;
 
@@ -451,7 +459,8 @@ void DHMProcessor::setup_cuda() {
         CUDA_CHECK( cudaSetDeviceFlags(cudaDeviceMapHost) );
 
     // setup CUDA stream to run copying in background
-    CUDA_CHECK( cudaStreamCreateWithFlags(&async_stream, cudaStreamNonBlocking) );
+    for (int i = 0; i < N_BUF; i++)
+        CUDA_CHECK( cudaStreamCreateWithFlags(&stream[i], cudaStreamNonBlocking) );
 
     // setup CUFFT
     CUDA_CHECK( cufftCreate(&fft_plan) );
@@ -462,9 +471,9 @@ void DHMProcessor::setup_cuda() {
 
     // only one quadrant stored on host -- point is to minimize transfer time
     CUDA_CHECK( cudaMallocHost(&h_filter, num_slices*(N/2+1)*(N/2+1)*sizeof(complex)) );
-    // double buffering on device, allows simultaneous copy and processing
-    CUDA_CHECK( cudaMalloc(&d_filter[0], num_slices*N*N*sizeof(complex)) );
-    CUDA_CHECK( cudaMalloc(&d_filter[1], num_slices*N*N*sizeof(complex)) );
+    // multiple buffering on device, allows simultaneous copy and processing
+    for (int i = 0; i < N_BUF; i++)
+        CUDA_CHECK( cudaMalloc(&d_filter[i], num_slices*N*N*sizeof(complex)) );
     buffer_pos = 0;
     // space for frame
     CUDA_CHECK( cudaMallocHost(&h_frame, N*N*sizeof(byte)) );
@@ -505,14 +514,15 @@ void DHMProcessor::cleanup_cuda()
 
     CUDA_CHECK( cufftDestroy(fft_plan) );
 
-    CUDA_CHECK( cudaStreamDestroy(async_stream) );
+    for (int i = 0; i < N_BUF; i++)
+        CUDA_CHECK( cudaStreamDestroy(stream[i]) );
 
     CUDA_CHECK( cudaFreeHost(h_frame) );
     CUDA_CHECK( cudaFreeHost(h_filter) );
     CUDA_CHECK( cudaFreeHost(h_mask) );
 
-    CUDA_CHECK( cudaFree(d_filter[0]) );
-    CUDA_CHECK( cudaFree(d_filter[1]) );
+    for (int i = 0; i < N_BUF; i++)
+        CUDA_CHECK( cudaFree(d_filter[i]) );
     if (memory_kind == DHM_STANDARD_MEM)
         CUDA_CHECK( cudaFree(d_frame) );
     CUDA_CHECK( cudaFree(d_volume) );
@@ -602,10 +612,12 @@ void DHMProcessor::generate_volume()
 {
     // start transferring filter quadrants to alternating buffer, for *next* frame
     // ... waiting for previous ops to finish first
-    CUDA_CHECK( cudaDeviceSynchronize() );
+//    CUDA_CHECK( cudaDeviceSynchronize() );
     cudaMemcpy3DParms p = memcpy3d_params;
-    p.dstPtr.ptr = d_filter[!buffer_pos];
-    CUDA_CHECK( cudaMemcpy3DAsync(&p, async_stream) );
+    p.dstPtr.ptr = d_filter[(buffer_pos + N_BUF - 1) % N_BUF];
+    CUDA_CHECK( cudaMemcpy3DAsync(&p, stream[(buffer_pos + N_BUF - 1) % N_BUF]) );
+    // ^^^ this transfer is the largest bottleneck on the Titan
+    // TODO: only transfer upper triangle of quadrant... I couldn't get it to work
 
     // convert 8-bit image to real channel of complex float
     _b2c<<<N, N>>>(d_frame, d_image);
@@ -615,6 +627,7 @@ void DHMProcessor::generate_volume()
     CUDA_CHECK( cufftXtExec(fft_plan, d_image, d_image, CUFFT_FORWARD) );
 
     // multiply image with stored quadrant of filter stack
+    CUDA_CHECK( cudaStreamSynchronize(stream[buffer_pos]) ); // wait for queued copy to finish
     _quad_mul<<<N/2+1, N/2+1>>>(d_filter[buffer_pos], d_image, d_mask, params);
     KERNEL_CHECK();
 
@@ -654,8 +667,8 @@ void DHMProcessor::generate_volume()
     // sync up the host-side and device-side masks once callback returns
     CUDA_CHECK( cudaMemcpy(h_mask, d_mask, num_slices*sizeof(byte), cudaMemcpyDeviceToHost) );
 
-    // flip the buffer
-    buffer_pos = !buffer_pos;
+    // advance the buffer
+    buffer_pos = (buffer_pos + 1) % N_BUF;
 }
 
 }
