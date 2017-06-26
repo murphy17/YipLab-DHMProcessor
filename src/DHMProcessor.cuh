@@ -77,6 +77,7 @@ private:
     bool is_running = false;
     int frame_num = 0;
     static const int N_BUF = 2;
+    static const int QUEUE_SIZE = 16;
 
     // CUDA handles
     byte *h_frame, *h_mask, *d_frame, *d_mask;

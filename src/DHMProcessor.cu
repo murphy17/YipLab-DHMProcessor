@@ -93,6 +93,7 @@ inline cudaError_t cudaFill(T *devPtr, T value, size_t count)
 // Construct filter stack
 ///////////////////////////////////////////////////////////////////////////////
 
+// Generate the wavefront (in spatial domain) at a given distance
 __global__ void _gen_filter_slice(complex *g, const float z, const DHMParameters p)
 {
     const int i = blockIdx.x;
@@ -116,6 +117,7 @@ __global__ void _gen_filter_slice(complex *g, const float z, const DHMParameters
     g[i*p.N+j].y = re / r;
 }
 
+// Generate each slice of the filter stack, FFT them, and push them to a host-side buffer
 void DHMProcessor::build_filter_stack()
 {
     complex *slice;
@@ -129,7 +131,7 @@ void DHMProcessor::build_filter_stack()
         // FFT in-place
         CUDA_CHECK( cufftXtExec(fft_plan, slice, slice, CUFFT_INVERSE) );
 
-        // frequency shift -- eliminates need to copy later
+        // trick to perform FFT shift without copying, uses a Fourier transform identity
         _freq_shift<<<N, N>>>(slice);
         KERNEL_CHECK();
 
@@ -161,10 +163,10 @@ void DHMProcessor::build_filter_stack()
 // Quadrant multiply kernel
 ///////////////////////////////////////////////////////////////////////////////
 
-// using fourfold symmetry of z
+// Multiply input (FT of) image w by the upper-left quadrant of each slice of
+// stack z, writing the result to z, and skipping slices indicated by mask
 __global__
 void _quad_mul(
-//    complex *f,
     complex *z,
     const __restrict__ complex *w,
     const __restrict__ byte *mask,
@@ -174,6 +176,11 @@ void _quad_mul(
     const int j = threadIdx.x;
     const int ii = p.N-i;
     const int jj = p.N-j;
+
+    // note: ordinarily you'd have the if statement inside the for loop,
+    // that tends to hurt performance -- hence the repeated code.
+    // each case handles either points in the interior of the quadrant,
+    // or a certain (horizontal/vertical) boundary
 
     if ((i>0 && i<p.N/2) && (j>0 && j<p.N/2))
     {
@@ -187,14 +194,12 @@ void _quad_mul(
             if (mask[k])
             {
                 complex z_ij = z[i*p.N+j];
-//                complex z_ij = sym_get(z, i, j, p.N);
                 z[i*p.N+j] = cmul(w1, z_ij);
                 z[ii*p.N+jj] = cmul(w4, z_ij);
                 z[ii*p.N+j] = cmul(w2, z_ij);
                 z[i*p.N+jj] = cmul(w3, z_ij);
             }
             z += p.N*p.N;
-//            f += p.N*(p.N+1)/2;
         }
     }
     else if (i>0 && i<p.N/2)
@@ -207,12 +212,10 @@ void _quad_mul(
             if (mask[k])
             {
                 complex z_ij = z[i*p.N+j];
-//                complex z_ij = sym_get(z, i, j, p.N);
                 z[i*p.N+j] = cmul(w1, z_ij);
                 z[ii*p.N+j] = cmul(w2, z_ij);
             }
             z += p.N*p.N;
-//            f += p.N*(p.N+1)/2;
         }
     }
     else if (j>0 && j<p.N/2)
@@ -225,12 +228,10 @@ void _quad_mul(
             if (mask[k])
             {
                 complex z_ij = z[i*p.N+j];
-//                complex z_ij = sym_get(z, i, j, p.N);
                 z[i*p.N+j] = cmul(w1, z_ij);
                 z[i*p.N+jj] = cmul(w2, z_ij);
             }
             z += p.N*p.N;
-//            f += p.N*(p.N+1)/2;
         }
     }
     else
@@ -242,11 +243,9 @@ void _quad_mul(
             if (mask[k])
             {
                 complex z_ij = z[i*p.N+j];
-//                complex z_ij = sym_get(z, i, j, p.N);
                 z[i*p.N+j] = cmul(w1, z_ij);
             }
             z += p.N*p.N;
-//            f += p.N*(p.N+1)/2;
         }
     }
 }
@@ -255,7 +254,7 @@ void _quad_mul(
 // I/O ops
 ///////////////////////////////////////////////////////////////////////////////
 
-// should these happen in separate threads?
+// TODO: remove most of these, functionality superseded by ImageReader/Writer
 
 // load image and push to GPU
 void DHMProcessor::load_image(fs::path path)
@@ -272,7 +271,6 @@ void DHMProcessor::load_image(fs::path path)
     {
         CUDA_CHECK( cudaMemcpy(d_frame, h_frame, N*N*sizeof(byte), cudaMemcpyHostToDevice) );
     }
-    // d_frame already mapped to h_frame in constructor if unified
 }
 
 void DHMProcessor::save_depth(fs::path path)
@@ -592,13 +590,14 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
     input_dir = check_dir(input_dir);
     this->output_dir = check_dir(output_dir);
 
-    if (max_frames == 0) // not functioning the way I want
+    if (max_frames == 0) // not working right now, ignore
     {
         for (auto &it : boost::make_iterator_range(fs::directory_iterator(input_dir), {}))
             max_frames++;
     }
 
-    ImageReader queue(input_dir, 16);
+    // Start the thread monitoring the input folder, populating a queue of images in memory.
+    ImageReader queue(input_dir, QUEUE_SIZE);
     queue.run();
 
     frame_num = 0;
@@ -609,18 +608,22 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
 
         Image img;
 
+        // Grab an image from the preloaded queue. Pause this thread and wait for a new image if queue empty.
         queue.get(&img);
 
         std::cout << img.str << std::endl;
 
+        // Transfer the image from our wrapper type to a host-side working area...
         memcpy(h_frame, img.mat.data, N*N*sizeof(byte));
-
         if (memory_kind == DHM_STANDARD_MEM)
         {
+            // ... and transfer it to the GPU.
             CUDA_CHECK( cudaMemcpy(d_frame, h_frame, N*N*sizeof(byte), cudaMemcpyHostToDevice) );
         }
 
+        // Call the GPU-side processing routine.
         process(img.str);
+
         frame_num++;
     }
 
