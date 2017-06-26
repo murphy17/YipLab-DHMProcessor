@@ -559,7 +559,7 @@ void DHMProcessor::process(fs::path input_path)
 {
     std::string f_str = output_dir.string() + "/" + input_path.filename().stem().string();
 
-    generate_volume();
+    CUDA_TIMER( generate_volume() );
 
     ////////////////////////////////////////////////////////////////////////
     // VOLUME REDUCTION / DEPTH MAP GENERATION OPS GO HERE
@@ -594,7 +594,7 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
     input_dir = check_dir(input_dir);
     this->output_dir = check_dir(output_dir);
 
-    if (max_frames == 0)
+    if (max_frames == 0) // not functioning the way I want
     {
         for (auto &it : boost::make_iterator_range(fs::directory_iterator(input_dir), {}))
             max_frames++;

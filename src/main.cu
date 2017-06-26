@@ -67,8 +67,8 @@ int main(int argc, char* argv[])
 
     if (argc < 3)
     {
-        input_dir = "~/image_store/Murphy_Michael/dhm_in/spheres";
-        output_dir = "~/image_store/Murphy_Michael/dhm_out/spheres";
+        input_dir = "/mnt/image_store/Peng_Lindsey/DHM_IN";
+        output_dir = "/mnt/image_store/Peng_Lindsey/DHM_OUT";
     }
     else
     {
@@ -76,9 +76,9 @@ int main(int argc, char* argv[])
         output_dir = string(argv[2]);
     }
 
-    int num_slices = 100;
-    float delta_z = 1.0f;
-    float z_init = 30.0f;
+    int num_slices = 25;
+    float delta_z = 2.0f;
+    float z_init = 40.0f;
     float delta_x = 0.0051992f; // (5.32f / 1024.f);
     float delta_y = 0.0051992f; // (6.66f / 1280.f);
     float lambda0 = 0.000488f;
@@ -93,7 +93,7 @@ int main(int argc, char* argv[])
     dhm.set_callback(DHMCallback(id_cb)); // DHM_BEFORE_FFT, DHM_AFTER_FFT
 
     // inputs must be bitmaps, of size 1024x1024
-    CUDA_TIMER( dhm.process_folder(input_dir, output_dir, save_volume, max_frames) );
+    dhm.process_folder(input_dir, output_dir, save_volume, max_frames);
 }
 
 
