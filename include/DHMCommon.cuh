@@ -101,14 +101,14 @@ enum DHMInputSource { DHM_FOLDER_SRC, DHM_CAMERA_SRC };
 
 // idea here is that you can write a custom processing routine without needing to edit any of my stuff
 
-class DHMCallback {
-private:
-    void (*_func)(float *, byte *, DHMParameters);
-
-public:
-    DHMCallback();
-    DHMCallback(void (*)(float *, byte *, DHMParameters));
-    void operator()(float *, byte *, DHMParameters);
-};
+//class DHMCallback {
+//private:
+//    void (*_func)(float *, byte *, DHMParameters);
+//
+//public:
+//    DHMCallback();
+//    DHMCallback(void (*)(float *, byte *, DHMParameters));
+//    void operator()(float *, byte *, DHMParameters);
+//};
 
 }

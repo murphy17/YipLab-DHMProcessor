@@ -405,20 +405,20 @@ std::vector<fs::path> iter_folder(fs::path path, std::string ext)
 // Callback class
 ////////////////////////////////////////////////////////////////////////////////
 
-DHMCallback::DHMCallback() {
-    _func = nullptr;
-}
-
-// how to give the callback all the parameters?
-DHMCallback::DHMCallback(void (*func)(float *, byte *, DHMParameters)) {
-    _func = func;
-}
-
-void DHMCallback::operator()(float *img, byte *mask, DHMParameters params) {
-    if (_func == nullptr)
-        DHM_ERROR("Callback not set");
-    _func(img, mask, params);
-}
+//DHMCallback::DHMCallback() {
+//    _func = nullptr;
+//}
+//
+//// how to give the callback all the parameters?
+//DHMCallback::DHMCallback(void (*func)(float *, byte *, DHMParameters)) {
+//    _func = func;
+//}
+//
+//void DHMCallback::operator()(float *img, byte *mask, DHMParameters params) {
+//    if (_func == nullptr)
+//        DHM_ERROR("Callback not set");
+//    _func(img, mask, params);
+//}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Main DHMProcessor class
@@ -559,13 +559,11 @@ void DHMProcessor::process(fs::path input_path)
 {
     std::string f_str = output_dir.string() + "/" + input_path.filename().stem().string();
 
-    CUDA_TIMER( generate_volume() );
+    CUDA_TIMER( reconstruct_stack() );
 
     ////////////////////////////////////////////////////////////////////////
     // VOLUME REDUCTION / DEPTH MAP GENERATION OPS GO HERE
     ////////////////////////////////////////////////////////////////////////
-
-    // i.e. move the callback out of generate_volume
 
     // save depth map
 
@@ -607,7 +605,7 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
 
     while (max_frames == -1 || frame_num < max_frames)
     {
-        // TODO: eliminate some of these copies, there's a lot
+        // lots of copies here, not a bottleneck though
 
         Image img;
         queue.get(&img);
@@ -631,21 +629,18 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
 }
 
 // will I expose the callback object or no?
-void DHMProcessor::set_callback(DHMCallback cb)
-{
-    callback = cb;
-}
+//void DHMProcessor::set_callback(DHMCallback cb)
+//{
+//    callback = cb;
+//}
 
 ////////////////////////////////////////////////////////////////////////////////
 // The actual deconvolution
 ////////////////////////////////////////////////////////////////////////////////
 
-// this would be a CALLBACK (no - but part of one, load/store ops...)
-void DHMProcessor::generate_volume()
+void DHMProcessor::reconstruct_stack()
 {
     // start transferring filter quadrants to alternating buffer, for *next* frame
-    // ... waiting for previous ops to finish first
-//    CUDA_CHECK( cudaDeviceSynchronize() );
     cudaMemcpy3DParms p = memcpy3d_params;
     p.dstPtr.ptr = d_filter[(buffer_pos + N_BUF - 1) % N_BUF];
     CUDA_CHECK( cudaMemcpy3DAsync(&p, stream[(buffer_pos + N_BUF - 1) % N_BUF]) );
@@ -667,6 +662,7 @@ void DHMProcessor::generate_volume()
 
     ////////////////////////////////////////////////////////////////////////////
     // CUSTOM FREQUENCY DOMAIN OPS GO HERE
+    // d_volume -- NUM_SLICES*N*N volume
     ////////////////////////////////////////////////////////////////////////////
 
 
@@ -679,23 +675,23 @@ void DHMProcessor::generate_volume()
 
             _modulus<<<N, N>>>(d_filter[buffer_pos] + i*N*N, d_volume + i*N*N);
             KERNEL_CHECK();
-
-            // normalize slice to (0,1)?
         }
     }
 
-    // construct volume from one frame's worth of slices once they're ready...
-    CUDA_CHECK( cudaStreamSynchronize(0) ); // allow the copy stream to continue in background
+    CUDA_CHECK( cudaStreamSynchronize(0) ); // allow the copy streams to continue in background
 
 
     ////////////////////////////////////////////////////////////////////////////
     // CUSTOM SPATIAL DOMAIN OPS GO HERE
+    // d_volume -- NUM_SLICES*N*N volume
+    // d_mask -- NUM_SLICES vector, 1 to query that slice on next frame
+    // d_depth -- N*N output depth map
     ////////////////////////////////////////////////////////////////////////////
 
 
     // run the callback ...
-    callback(d_volume, d_mask, params);
-    KERNEL_CHECK();
+    //callback(d_volume, d_mask, params);
+    //KERNEL_CHECK();
 
     // sync up the host-side and device-side masks once callback returns
     CUDA_CHECK( cudaMemcpy(h_mask, d_mask, num_slices*sizeof(byte), cudaMemcpyDeviceToHost) );

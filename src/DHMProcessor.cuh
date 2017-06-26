@@ -33,9 +33,8 @@ public:
     void process_folder(fs::path, fs::path, bool, int = -1);
 
     // should this be in constructor?
-    void set_callback(DHMCallback);
+    // void set_callback(DHMCallback);
 
-    // TODO: take some of these from constructor
     static const int N = 1024;
     float DX, DY, LAMBDA0;
 
@@ -56,7 +55,7 @@ private:
     void process(fs::path);
     void load_image(fs::path);
     void save_image(fs::path);
-    void generate_volume();
+    void reconstruct_stack();
     void save_depth(fs::path);
     void save_volume(fs::path);
 
@@ -74,7 +73,7 @@ private:
     // internal parameters
     static bool is_initialized; // singleton
     DHMParameters params;
-    DHMCallback callback;
+//    DHMCallback callback;
     bool is_running = false;
     int frame_num = 0;
     static const int N_BUF = 2;

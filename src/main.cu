@@ -60,37 +60,36 @@ int main(int argc, char* argv[])
 
     string input_dir, output_dir;
     bool save_volume = true;
-    int max_frames = 0; //-1;
     // -1: poll input folder forever
     // 0: poll input folder only once
     // nonnegative number: self explanatory
+    int num_slices, max_frames;
+    float delta_z, z_init;
 
-    if (argc < 3)
+    if (argc < 7)
     {
-        input_dir = "/mnt/image_store/Peng_Lindsey/DHM_IN";
-        output_dir = "/mnt/image_store/Peng_Lindsey/DHM_OUT";
+        input_dir = "/mnt/image_store/Murphy_Michael/dhm_in/spheres";
+        output_dir = "/mnt/image_store/Murphy_Michael/dhm_out/spheres";
+        z_init = 30.0f;
+        delta_z = 1.0f;
+        num_slices = 100;
+        max_frames = -1;
     }
     else
     {
         input_dir = string(argv[1]);
         output_dir = string(argv[2]);
+        z_init = stof(string(argv[3]));
+        delta_z = stof(string(argv[4]));
+        num_slices = stoi(string(argv[5]));
+        max_frames = stoi(string(argv[6]));
     }
 
-    int num_slices = 25;
-    float delta_z = 2.0f;
-    float z_init = 40.0f;
     float delta_x = 0.0051992f; // (5.32f / 1024.f);
     float delta_y = 0.0051992f; // (6.66f / 1280.f);
     float lambda0 = 0.000488f;
 
     DHMProcessor dhm(num_slices, delta_z, z_init, delta_x, delta_y, lambda0);
-
-    // thinking i'll comment out all the callback stuff. unnecessary complexity...
-
-    // TODO: allow callbacks to have state, i.e. with additional params
-    // have an enum -- freq / time domain?
-    // the former doesn't take the mask though...
-    dhm.set_callback(DHMCallback(id_cb)); // DHM_BEFORE_FFT, DHM_AFTER_FFT
 
     // inputs must be bitmaps, of size 1024x1024
     dhm.process_folder(input_dir, output_dir, save_volume, max_frames);
