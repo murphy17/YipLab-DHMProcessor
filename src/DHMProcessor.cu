@@ -608,6 +608,7 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
         // lots of copies here, not a bottleneck though
 
         Image img;
+
         queue.get(&img);
 
         std::cout << img.str << std::endl;

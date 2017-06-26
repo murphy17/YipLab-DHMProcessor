@@ -1,5 +1,7 @@
 #include "ImageReader.hpp"
 
+// TODO: complementary ImageWriter for storage
+
 namespace YipLab {
 
 ImageReader::ImageReader(const fs::path input_path, const int buffer_size)
@@ -18,6 +20,15 @@ void ImageReader::run() // max_frames
         try {
             while (std::atomic_load(&_stop) == 0)
             {
+                //////////////////////////////////////////////////////////////////////////////////////////////////////
+                // MicroManager acquisition code would live here.
+                // (MM API docs at https://valelab4.ucsf.edu/~MM/doc/MMCore/html/class_c_m_m_core.html)
+                // Basically, just comment everything out inside this while loop, add a call that asks MM for a new
+                // image, wrap the returned data pointer in an OpenCV Mat (then wrap that in my Image structure, with
+                // some descriptor string in the "path" field). Then just do _queue->push_front.
+                // (Alternatively, MM appears to use an event system -- that would be a bit more involved to use)
+                //////////////////////////////////////////////////////////////////////////////////////////////////////
+
                 std::vector<fs::path> new_files;
 
                 // I think the iterator has problems with folder being modified
