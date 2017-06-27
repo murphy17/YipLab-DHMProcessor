@@ -13,10 +13,10 @@
 #ifndef STRING_HELPER_H
 #define STRING_HELPER_H
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
-#include <string>
+#include <cstring>
 
 #if defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
 #ifndef _CRT_SECURE_NO_DEPRECATE

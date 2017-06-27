@@ -162,6 +162,12 @@ void ImageWriter::start()
                     }
 
                     TinyTIFFWriter_close(tif);
+
+//                    cv::Mat mat(img.mat.rows, img.mat.cols, CV_8U);
+//                    cv::normalize(img.mat, img.mat, 1.0, 0.0, cv::NORM_MINMAX, -1);
+//                    img.mat.convertTo(mat, CV_8U, 255.f);
+//
+//                    cv::imwrite(img.str, img.mat);
                 }
                 else // pop_back returns false if stop command has been triggered
                 {
@@ -182,7 +188,6 @@ void ImageWriter::write(const Image src) // reference?
     if (_ex) std::rethrow_exception(_ex);
     l.unlock();
 
-    // this ok? need to copy? idk
     _queue->push_front(src);
 }
 
@@ -192,11 +197,13 @@ void ImageWriter::finish()
     if (_ex) std::rethrow_exception(_ex);
     l.unlock();
 
-    // this is a bad solution, but it works -- spin-lock until all images consumed
+    // this is a bad solution for a few reasons, but it works
+    // -- spin-lock until all images consumed
     while ( !_queue->is_empty() )
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+
     _queue->stop();
 }
 

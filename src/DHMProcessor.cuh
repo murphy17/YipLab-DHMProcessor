@@ -7,21 +7,95 @@
 
 #pragma once
 
-#include "DHMCommon.cuh"
-//#include "UEyeCamera/UEyeCamera.hpp"
+// CUFFT
+#include "cufftXt.h"
+// CUDA error-checking ops
+#include "common.h"
+#include "helper_string.h"
+// blocking queue class
 #include "ImageQueue.hpp"
+// development tools
+#include "util.cuh"
 
 namespace YipLab {
 
+////////////////////////////////////////////////////////////////////////////////
+// Error handling
+////////////////////////////////////////////////////////////////////////////////
+
+#define DHM_ERROR(msg) (throw DHMException(msg, __FILE__, __LINE__))
+class DHMException : public std::exception {
+public:
+    std::string msg;
+//    int line;
+
+    DHMException(std::string msg, const char *const file, int const line) {
+        this->msg =  "DHM exception at line " + std::to_string(line) + " in " + file + ": " + msg;
+        cudaDeviceReset();
+    }
+
+    const char* what() const throw() {
+        return msg.c_str();
+    }
+};
+
+#define CUDA_CHECK(val) _check_cuda((val), #val, __FILE__, __LINE__)
+template<typename T>
+inline void _check_cuda(T result, char const *const func, const char *const file, int const line)
+{
+    if (result)
+    {
+        throw DHMException(_cudaGetErrorEnum(result), file, line);
+    }
+}
+
+#define KERNEL_CHECK() _check_kernel(__FILE__, __LINE__);
+inline void _check_kernel(const char *const file, const int line) {
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        throw DHMException(_cudaGetErrorEnum(err), file, line);
+    }
+}
+
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Type definitions
+/////////////////////////////////////////////////////////////////////////////////////////
+
+typedef float2 complex;
+typedef unsigned char byte;
+
+typedef struct
+{
+    int N, num_slices;
+    float DX, DY, LAMBDA0;
+    float delta_z, z_init;
+}  DHMParameters;
+
+enum DHMMemoryKind { DHM_STANDARD_MEM, DHM_UNIFIED_MEM };
+
+
+/////////////////////////////////////////////////////////////////////////////////////////
 // CUDA kernels
+/////////////////////////////////////////////////////////////////////////////////////////
+
 __global__ void _b2c(const byte*, complex*);
 __global__ void _freq_shift(complex*);
 __global__ void _modulus(const complex*, float*);
 __global__ void _gen_filter_slice(complex*, const float, const DHMParameters);
 __global__ void _quad_mul(complex*, const complex*, const byte*, const DHMParameters);
 
-// misc helper stuff
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Misc helper stuff
+/////////////////////////////////////////////////////////////////////////////////////////
+
 fs::path check_dir(fs::path);
+
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Main class
+/////////////////////////////////////////////////////////////////////////////////////////
 
 class DHMProcessor
 {
@@ -30,9 +104,6 @@ public:
     ~DHMProcessor();
 
     void process_folder(fs::path, fs::path, bool, int = -1);
-
-    // should this be in constructor?
-    // void set_callback(DHMCallback);
 
     static const int N = 1024;
     float DX, DY, LAMBDA0;
@@ -56,13 +127,12 @@ private:
     int num_slices;
     float delta_z;
     float z_init;
-    DHMMemoryKind memory_kind; // presently this doesn't do that much
+    DHMMemoryKind memory_kind;
     fs::path output_dir;
 
     // internal parameters
     static bool is_initialized; // singleton
     DHMParameters params;
-//    DHMCallback callback;
     bool is_running = false;
     int frame_num = 0;
     static const int N_BUF = 2;

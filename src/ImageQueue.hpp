@@ -38,6 +38,8 @@ typedef struct
     std::string str;
 } Image;
 
+// this implements a fixed-size blocking queue, and is largely copied from a Boost example
+// plus some hacks that work for our application
 template <class T>
 class BoundedBuffer {
 public:
@@ -105,24 +107,6 @@ public:
         lock.unlock();
         return stop;
     }
-
-//    void clear() {
-//        std::unique_lock<std::mutex> lock(m_mutex);
-//        m_unread = 0;
-//        lock.unlock();
-//        m_not_full.notify_one();
-//    }
-//
-//    void wait_empty() {
-//        // spin locking on a mutex, dumb but works for what I need
-//        bool done;
-//        do {
-//            std::unique_lock<std::mutex> lock(m_mutex);
-//            done = m_unread == 0;
-//            lock.unlock();
-//            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-//        } while (!done);
-//    }
 
 private:
     BoundedBuffer(const BoundedBuffer&);              // Disabled copy constructor

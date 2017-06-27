@@ -5,7 +5,6 @@
  *      Author: michaelmurphy
  */
 
-#include "DHMCommon.cuh"
 #include "DHMProcessor.cuh"
 
 namespace YipLab {
@@ -30,12 +29,6 @@ __device__ __forceinline__ complex cmul(const complex a, const complex b)
     return c;
 }
 
-template <typename T>
-__device__ __forceinline__ T sym_get(const T *x, const int i, const int j, const int N)
-{
-    const int offset = i <= j ? i*N+j : j*N+i;
-    return x[offset];
-}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Element-wise operations
@@ -89,11 +82,12 @@ inline cudaError_t cudaFill(T *devPtr, T value, size_t count)
     return cudaGetLastError();
 }
 
+
 ///////////////////////////////////////////////////////////////////////////////
 // Construct filter stack
 ///////////////////////////////////////////////////////////////////////////////
 
-// Generate the wavefront (in spatial domain) at a given distance
+// Generate the wavefront (in spatial domain) at a given distance.
 __global__ void _gen_filter_slice(complex *g, const float z, const DHMParameters p)
 {
     const int i = blockIdx.x;
@@ -117,7 +111,7 @@ __global__ void _gen_filter_slice(complex *g, const float z, const DHMParameters
     g[i*p.N+j].y = re / r;
 }
 
-// Generate each slice of the filter stack, FFT them, and push them to a host-side buffer
+// Generate each slice of the filter stack, FFT them, and push them to a host-side buffer.
 void DHMProcessor::build_filter_stack()
 {
     complex *slice;
@@ -159,11 +153,12 @@ void DHMProcessor::build_filter_stack()
     CUDA_CHECK( cudaFree(slice) );
 }
 
+
 ///////////////////////////////////////////////////////////////////////////////
 // Quadrant multiply kernel
 ///////////////////////////////////////////////////////////////////////////////
 
-// Multiply input (FT of) image w by the upper-left quadrant of each slice of
+// Pointwise multiply input matrix w by the upper-left quadrant of each slice of
 // stack z, writing the result to z, and skipping slices indicated by mask
 __global__
 void _quad_mul(
@@ -250,6 +245,7 @@ void _quad_mul(
     }
 }
 
+
 ////////////////////////////////////////////////////////////////////////////////
 // Filesystem helper functions
 ////////////////////////////////////////////////////////////////////////////////
@@ -269,24 +265,6 @@ fs::path check_dir(fs::path path)
     return path;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// Callback class
-////////////////////////////////////////////////////////////////////////////////
-
-//DHMCallback::DHMCallback() {
-//    _func = nullptr;
-//}
-//
-//// how to give the callback all the parameters?
-//DHMCallback::DHMCallback(void (*func)(float *, byte *, DHMParameters)) {
-//    _func = func;
-//}
-//
-//void DHMCallback::operator()(float *img, byte *mask, DHMParameters params) {
-//    if (_func == nullptr)
-//        DHM_ERROR("Callback not set");
-//    _func(img, mask, params);
-//}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Main DHMProcessor class
@@ -335,6 +313,7 @@ DHMProcessor::~DHMProcessor() {
 
     is_initialized = false;
 }
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Memory setup + cleanup
@@ -422,6 +401,7 @@ void DHMProcessor::cleanup_cuda()
     CUDA_CHECK( cudaFree(d_depth) );
 }
 
+
 ////////////////////////////////////////////////////////////////////////////////
 // Public methods
 ////////////////////////////////////////////////////////////////////////////////
@@ -432,7 +412,8 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
     is_running = true;
 
     input_dir = check_dir(input_dir);
-    this->output_dir = check_dir(output_dir);
+    output_dir = check_dir(output_dir);
+    this->output_dir = output_dir;
 
     // Count valid TIFF files in folder.
     if (max_frames == 0)
@@ -461,8 +442,6 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
 
     while (max_frames == -1 || frame_num < max_frames)
     {
-        // lots of copies here, not a bottleneck though
-
         // Grab an image from the preloaded queue. Pause this thread and wait for a new image if queue empty.
         Image img_in;
         in.get(&img_in);
@@ -529,16 +508,11 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
     }
 
     in.finish();
-    out.finish(); // TODO: this is not correct!!! have to wait until queue is empty!!!
+    out.finish();
 
     is_running = false;
 }
 
-// will I expose the callback object or no?
-//void DHMProcessor::set_callback(DHMCallback cb)
-//{
-//    callback = cb;
-//}
 
 ////////////////////////////////////////////////////////////////////////////////
 // The actual algorithm
@@ -568,7 +542,7 @@ void DHMProcessor::process()
 
     ////////////////////////////////////////////////////////////////////////////
     // CUSTOM FREQUENCY DOMAIN OPS GO HERE
-    // d_volume -- NUM_SLICES*N*N volume
+    // d_filter -- NUM_SLICES*N*N complex volume
     ////////////////////////////////////////////////////////////////////////////
 
 
@@ -587,9 +561,9 @@ void DHMProcessor::process()
 
     ////////////////////////////////////////////////////////////////////////////
     // CUSTOM SPATIAL DOMAIN OPS GO HERE
-    // d_volume -- NUM_SLICES*N*N volume
-    // d_mask -- NUM_SLICES vector, 1 to query that slice on next frame
-    // d_depth -- N*N output depth map
+    // d_volume -- NUM_SLICES*N*N float volume
+    // d_mask -- NUM_SLICES char vector, 1 to query that slice on next frame
+    // d_depth -- N*N float depth map
     ////////////////////////////////////////////////////////////////////////////
 
 

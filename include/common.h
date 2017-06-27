@@ -15,11 +15,9 @@
 #ifndef HELPER_CUDA_H
 #define HELPER_CUDA_H
 
-#pragma once
-
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstdio>
+#include <cstring>
 
 #include "helper_string.h"
 
