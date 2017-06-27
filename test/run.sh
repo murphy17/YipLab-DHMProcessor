@@ -5,4 +5,4 @@
 # save_volume = 0 or 1
 
 rm -rf "/mnt/image_store/Peng_Lindsey/cropped/.*"
-../Debug/DHMProcessor "/mnt/image_store/Peng_Lindsey/cropped" "/mnt/image_store/Peng_Lindsey/cropped_out" 30 1 20 0 0
+../Debug/DHMProcessor "/mnt/image_store/Peng_Lindsey/cropped" "/mnt/image_store/Peng_Lindsey/cropped_out" 30 1 20 0 1

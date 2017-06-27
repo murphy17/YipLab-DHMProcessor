@@ -151,7 +151,10 @@ void ImageWriter::start()
 
                     if (tif)
                     {
-                        TinyTIFFWriter_writeImage(tif, img.mat.data);
+                        if (bit_depth == 32)
+                            TinyTIFFWriter_writeImage(tif, (float *)img.mat.data);
+                        else
+                            TinyTIFFWriter_writeImage(tif, img.mat.data);
                     }
                     else // no exception handling in TinyTIFF
                     {
