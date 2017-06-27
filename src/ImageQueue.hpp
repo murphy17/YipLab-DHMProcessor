@@ -48,51 +48,96 @@ public:
 
     explicit BoundedBuffer(size_type capacity) : m_unread(0), m_container(capacity) {}
 
-    void push_front(param_type item) {
+    bool push_front(param_type item) {
         std::unique_lock<std::mutex> lock(m_mutex);
         m_not_full.wait(lock, std::bind(&BoundedBuffer<value_type>::is_not_full, this));
-        m_container.push_front(item);
-        ++m_unread;
-        lock.unlock();
-        m_not_empty.notify_one();
+        if (!m_stop)
+        {
+            m_container.push_front(item);
+            ++m_unread;
+            lock.unlock();
+            m_not_empty.notify_one();
+            return true;
+        }
+        else
+        {
+            lock.unlock();
+            return false;
+        }
     }
 
-    void pop_back(value_type* pItem) {
+    bool pop_back(value_type* pItem) {
         std::unique_lock<std::mutex> lock(m_mutex);
         m_not_empty.wait(lock, std::bind(&BoundedBuffer<value_type>::is_not_empty, this));
-        *pItem = m_container[--m_unread];
+        if (!m_stop)
+        {
+            *pItem = m_container[--m_unread];
+            lock.unlock();
+            m_not_full.notify_one();
+            return true;
+        }
+        else
+        {
+            lock.unlock();
+            return false;
+        }
+    }
+
+    void stop() {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        m_stop = true;
         lock.unlock();
+        m_not_empty.notify_one();
         m_not_full.notify_one();
     }
 
-    void clear() {
+    bool is_stopped() {
         std::unique_lock<std::mutex> lock(m_mutex);
-        m_unread = 0;
+        bool stopped = m_stop;
         lock.unlock();
-        m_not_full.notify_one();
+        return stopped;
     }
+
+//    void clear() {
+//        std::unique_lock<std::mutex> lock(m_mutex);
+//        m_unread = 0;
+//        lock.unlock();
+//        m_not_full.notify_one();
+//    }
+//
+//    void wait_empty() {
+//        // spin locking on a mutex, dumb but works for what I need
+//        bool done;
+//        do {
+//            std::unique_lock<std::mutex> lock(m_mutex);
+//            done = m_unread == 0;
+//            lock.unlock();
+//            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+//        } while (!done);
+//    }
 
 private:
     BoundedBuffer(const BoundedBuffer&);              // Disabled copy constructor
     BoundedBuffer& operator = (const BoundedBuffer&); // Disabled assign operator
 
-    bool is_not_empty() const { return m_unread > 0; }
-    bool is_not_full() const { return m_unread < m_container.capacity(); }
+    bool is_not_empty() const { return m_unread > 0 || m_stop; }
+    bool is_not_full() const { return m_unread < m_container.capacity() || m_stop; }
 
     size_type m_unread;
     container_type m_container;
     std::mutex m_mutex;
     std::condition_variable m_not_empty;
     std::condition_variable m_not_full;
+    bool m_stop = false;
 };
 
 class ImageReader
 {
 public:
     ImageReader(const fs::path, const int);
-    void run();
+    void start();
     void get(Image *);
-    void stop();
+    void finish();
     ~ImageReader();
 
 private:
@@ -111,7 +156,7 @@ class ImageWriter
 {
 public:
     ImageWriter(const fs::path, const int);
-    void run();
+    void start();
     void write(const Image);
     void finish();
     ~ImageWriter();
@@ -120,7 +165,6 @@ private:
     fs::path output_path;
     BoundedBuffer<Image> *_queue = nullptr;
     std::thread _thread;
-    std::atomic<int> _stop;
     std::exception_ptr _ex = nullptr;
     std::mutex _mutex;
 

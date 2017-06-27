@@ -10,16 +10,15 @@ ImageReader::ImageReader(const fs::path input_path, const int buffer_size)
     this->input_path = input_path;
 
     _queue = new BoundedBuffer<Image>(buffer_size);
-    std::atomic_store(&_stop, 0);
     this->latest_frame = -1;
 }
 
-void ImageReader::run()
+void ImageReader::start()
 {
     // watch the folder
     _thread = std::thread([&](){
         try {
-            while (std::atomic_load(&_stop) == 0)
+            while ( !_queue->is_stopped() )
             {
                 //////////////////////////////////////////////////////////////////////////////////////////////////////
                 // MicroManager acquisition code would live here.
@@ -72,12 +71,13 @@ void ImageReader::run()
                         else
                         {
                             Image img = { mat, p.string() };
-                            // push to image queue; will sleep if full
-                            _queue->push_front(img);
+
+                            // push to image queue; will sleep if full, return false if queue stopped
+                            if ( !_queue->push_front(img) ) break;
+
+                            latest_frame = std::atoi(p.stem().c_str());
                         }
                     }
-
-                    latest_frame = std::atoi(new_files.back().stem().c_str());
                 }
 
                 // poll for new files every 100ms
@@ -100,14 +100,13 @@ void ImageReader::get(Image *dst)
     _queue->pop_back(dst);
 }
 
-void ImageReader::stop()
+void ImageReader::finish()
 {
     std::unique_lock<std::mutex> l(_mutex);
     if (_ex) std::rethrow_exception(_ex);
     l.unlock();
 
-    _stop++;
-    _queue->clear();
+    _queue->stop();
 }
 
 ImageReader::~ImageReader()
@@ -126,21 +125,26 @@ ImageWriter::ImageWriter(const fs::path output_path, const int buffer_size)
     this->output_path = output_path;
 
     _queue = new BoundedBuffer<Image>(buffer_size);
-    std::atomic_store(&_stop, 0);
 }
 
-void ImageWriter::run()
+void ImageWriter::start()
 {
-    // watch the folder
+    // consume images in queue
     _thread = std::thread([&](){
         try {
-            while (std::atomic_load(&_stop) == 0)
+            while (true)
             {
                 Image img;
-                _queue->pop_back(&img);
 
-                // for simplicity's sake, just using OpenCV write; single TIFF not issue
-                cv::imwrite(img.str, img.mat);
+                if ( _queue->pop_back(&img) )
+                {
+                    // for simplicity's sake, just using OpenCV write; single TIFF not speed issue
+                    cv::imwrite(img.str, img.mat);
+                }
+                else // pop_back returns false if stop command has been triggered
+                {
+                    break;
+                }
             }
         } catch (...) {
             std::unique_lock<std::mutex> l(_mutex);
@@ -162,13 +166,11 @@ void ImageWriter::write(const Image src) // reference?
 
 void ImageWriter::finish()
 {
-    // want to wait for queue to finish!!!
     std::unique_lock<std::mutex> l(_mutex);
     if (_ex) std::rethrow_exception(_ex);
     l.unlock();
 
-    _stop++;
-    _queue->clear();
+    _queue->stop();
 }
 
 ImageWriter::~ImageWriter()

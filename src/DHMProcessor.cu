@@ -451,11 +451,11 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
 
     // Start the thread monitoring the input folder, populating a queue of images in memory.
     ImageReader in(input_dir, QUEUE_SIZE);
-    in.run();
+    in.start();
 
     // Also start the thread responsible for writing in background.
     ImageWriter out(output_dir, QUEUE_SIZE);
-    out.run();
+    out.start();
 
     frame_num = 0;
 
@@ -528,7 +528,7 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
         frame_num++;
     }
 
-    in.stop();
+    in.finish();
     out.finish();
 
     is_running = false;
