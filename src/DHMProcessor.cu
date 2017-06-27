@@ -250,111 +250,6 @@ void _quad_mul(
     }
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// I/O ops
-///////////////////////////////////////////////////////////////////////////////
-
-// TODO: remove most of these, functionality superseded by ImageReader/Writer
-
-// load image and push to GPU
-void DHMProcessor::load_image(fs::path path)
-{
-    cv::Mat mat = cv::imread(path.string(), CV_LOAD_IMAGE_GRAYSCALE);
-    if ( mat.cols != N || mat.rows != N )
-        DHM_ERROR("Image " + path.string() + " is of size " +
-                  std::to_string(mat.rows) + "x" + std::to_string(mat.cols) +
-                  ", must be of size 1024x1024");
-
-    memcpy(h_frame, mat.data, N*N*sizeof(byte));
-
-    if (memory_kind == DHM_STANDARD_MEM)
-    {
-        CUDA_CHECK( cudaMemcpy(d_frame, h_frame, N*N*sizeof(byte), cudaMemcpyHostToDevice) );
-    }
-}
-
-void DHMProcessor::save_depth(fs::path path)
-{
-    TinyTIFFFile* tif = TinyTIFFWriter_open(path.string().c_str(), 8, N, N);
-
-    if (tif)
-    {
-        // allocation in here because idk if 8-bit depth suffices
-        CUDA_CHECK( cudaMemcpy(h_depth, d_depth, N*N*sizeof(float), cudaMemcpyDeviceToHost) );
-
-        cv::Mat mat_32f(N, N, CV_32F, h_depth);
-        cv::Mat mat_8u(N, N, CV_8U);
-
-        // depth is normalized
-        cv::normalize(mat_32f, mat_32f, 1.0, 0.0, cv::NORM_MINMAX, -1);
-        mat_32f.convertTo(mat_8u, CV_8U, 255.f);
-
-        TinyTIFFWriter_writeImage(tif, mat_8u.data);
-    }
-    else
-    {
-        DHM_ERROR("Could not write " + path.string());
-    }
-
-    TinyTIFFWriter_close(tif);
-}
-
-void DHMProcessor::save_volume(fs::path path)
-{
-    cv::Mat mat(N, N, CV_8U);
-
-    cv::cuda::GpuMat d_mat_norm(N, N, CV_32F);
-    cv::cuda::GpuMat d_mat_byte(N, N, CV_8U);
-
-    TinyTIFFFile* tif = TinyTIFFWriter_open(path.string().c_str(), 8, N, N);
-
-    if (tif)
-    {
-        for (int i = 0; i < num_slices; i++)
-        {
-            cv::cuda::GpuMat d_mat(N, N, CV_32F, d_volume + i*N*N);
-            cv::cuda::normalize(d_mat, d_mat_norm, 1.0, 0.0, cv::NORM_MINMAX, -1);
-            d_mat_norm.convertTo(d_mat_byte, CV_8U, 255.f);
-            d_mat_byte.download(mat);
-
-            TinyTIFFWriter_writeImage(tif, mat.data);
-        }
-    }
-    else
-    {
-        DHM_ERROR("Could not write " + path.string());
-    }
-
-    TinyTIFFWriter_close(tif);
-}
-
-void DHMProcessor::display_image(byte *h_image)
-{
-    cv::Mat mat(N, N, CV_8U, h_image);
-    cv::namedWindow("Display window", CV_WINDOW_NORMAL);
-    cv::imshow("Display window", mat);
-    cv::waitKey(0);
-}
-
-void DHMProcessor::display_volume(float *h_volume, bool inv)
-{
-    for (int i = 0; i < num_slices; i++)
-    {
-        cv::Mat mat(N, N, CV_32F, h_volume + i*N*N);
-        cv::normalize(mat, mat, 1.0, 0.0, cv::NORM_MINMAX, -1);
-        if (inv)
-            cv::subtract(1.0, mat, mat);
-        cv::namedWindow("Display window", CV_WINDOW_NORMAL);
-        cv::imshow("Display window", mat);
-        cv::waitKey(0);
-    }
-}
-
-//void DHMProcessor::acquire_frame(std::string output_dir)
-//{
-//
-//}
-
 ////////////////////////////////////////////////////////////////////////////////
 // Filesystem helper functions
 ////////////////////////////////////////////////////////////////////////////////
@@ -362,41 +257,16 @@ void DHMProcessor::display_volume(float *h_volume, bool inv)
 // make sure the input directory exists, and resolve any symlinks
 fs::path check_dir(fs::path path)
 {
-    using namespace boost::filesystem;
-
     if (path.string()[0] == '~')
     {
         path = fs::path(std::string(std::getenv("HOME")) + path.string().substr(1, path.string().size()-1));
     }
 
-    path = canonical(path).string(); // resolve symlinks
+    path = fs::canonical(path).string(); // resolve symlinks
 
-    if ( !exists(path) || !is_directory(path) ) DHM_ERROR("Input directory not found");
+    if ( !fs::exists(path) || !fs::is_directory(path) ) DHM_ERROR("Input directory not found");
 
     return path;
-}
-
-// returns an iterator through a folder in alphabetical order, optionally filtering by extension
-std::vector<fs::path> iter_folder(fs::path path, std::string ext)
-{
-    path = check_dir(path);
-
-    // loop thru bitmap files in input folder
-    std::vector<fs::path> dir;
-    for (auto &i : boost::make_iterator_range(fs::directory_iterator(path), {})) {
-        fs::path f = i.path();
-        if ( f.stem().string().size() > 0 && f.stem().string()[0] != '.' &&
-             (ext.length() == 0 || ext.length() > 0 && f.extension().string() == ext) )
-            dir.push_back(f);
-    }
-    std::sort(dir.begin(), dir.end(), [](const fs::path &a, const fs::path &b) -> bool
-                                      {
-                                          return strnatcmp(a.stem().c_str(), b.stem().c_str()) < 0;
-                                      });
-
-    if ( dir.size() == 0 ) DHM_ERROR("No matching files found");
-
-    return dir;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -495,11 +365,11 @@ void DHMProcessor::setup_cuda() {
         CUDA_CHECK( cudaMalloc(&d_filter[i], num_slices*N*N*sizeof(complex)) );
     buffer_pos = 0;
     // space for frame
-    CUDA_CHECK( cudaMallocHost(&h_frame, N*N*sizeof(byte)) );
-    if (memory_kind == DHM_STANDARD_MEM)
-        CUDA_CHECK( cudaMalloc(&d_frame, N*N*sizeof(byte)) );
-    else
-        CUDA_CHECK( cudaHostGetDevicePointer(&d_frame, h_frame, 0) );
+    //CUDA_CHECK( cudaMallocHost(&h_frame, N*N*sizeof(byte)) );
+    //if (memory_kind == DHM_STANDARD_MEM)
+    CUDA_CHECK( cudaMalloc(&d_frame, N*N*sizeof(byte)) );
+    //else
+    //    CUDA_CHECK( cudaHostGetDevicePointer(&d_frame, h_frame, 0) );
     // work space for FFT'ing image
     CUDA_CHECK( cudaMalloc(&d_image, N*N*sizeof(complex)) );
     // end result in here
@@ -537,7 +407,7 @@ void DHMProcessor::cleanup_cuda()
     for (int i = 0; i < N_BUF; i++)
         CUDA_CHECK( cudaStreamDestroy(stream[i]) );
 
-    CUDA_CHECK( cudaFreeHost(h_frame) );
+    //CUDA_CHECK( cudaFreeHost(h_frame) );
     CUDA_CHECK( cudaFreeHost(h_filter) );
     CUDA_CHECK( cudaFreeHost(h_mask) );
     CUDA_CHECK( cudaFreeHost(h_depth) );
@@ -552,30 +422,6 @@ void DHMProcessor::cleanup_cuda()
     CUDA_CHECK( cudaFree(d_depth) );
 }
 
-// wrapper for parts of workflow common to folder and camera
-void DHMProcessor::process(fs::path input_path)
-{
-    std::string f_str = output_dir.string() + "/" + input_path.filename().stem().string();
-
-    CUDA_TIMER( reconstruct_stack() );
-
-    ////////////////////////////////////////////////////////////////////////
-    // VOLUME REDUCTION / DEPTH MAP GENERATION OPS GO HERE
-    ////////////////////////////////////////////////////////////////////////
-
-    // save depth map
-
-    // disabled for now, depth map not implemented
-//    fs::path depth_path = fs::path(f_str + "_depth.tiff");
-//    save_depth(depth_path);
-
-    if (do_save_volume)
-    {
-        fs::path volume_path = fs::path(f_str + "_volume.tiff");
-        save_volume(volume_path);
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // Public methods
 ////////////////////////////////////////////////////////////////////////////////
@@ -585,20 +431,31 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
     if (is_running) DHM_ERROR("Can only run one operation at a time");
     is_running = true;
 
-    this->do_save_volume = do_save_volume;
-
     input_dir = check_dir(input_dir);
     this->output_dir = check_dir(output_dir);
 
-    if (max_frames == 0) // not working right now, ignore
+    // Count valid TIFF files in folder.
+    if (max_frames == 0)
     {
-        for (auto &it : boost::make_iterator_range(fs::directory_iterator(input_dir), {}))
-            max_frames++;
+        for (auto &i : boost::make_iterator_range(fs::directory_iterator(input_dir), {}))
+        {
+            fs::path this_path = i.path();
+            bool is_valid = this_path.stem().string()[0] != '.';
+            bool is_tiff = this_path.extension() == ".tif" || this_path.extension() == ".tiff";
+            if (is_valid && is_tiff)
+            {
+                max_frames++;
+            }
+        }
     }
 
     // Start the thread monitoring the input folder, populating a queue of images in memory.
-    ImageReader queue(input_dir, QUEUE_SIZE);
-    queue.run();
+    ImageReader in(input_dir, QUEUE_SIZE);
+    in.run();
+
+    // Also start the thread responsible for writing in background.
+    ImageWriter out(output_dir, QUEUE_SIZE);
+    out.run();
 
     frame_num = 0;
 
@@ -606,28 +463,73 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
     {
         // lots of copies here, not a bottleneck though
 
-        Image img;
-
         // Grab an image from the preloaded queue. Pause this thread and wait for a new image if queue empty.
-        queue.get(&img);
+        Image img_in;
+        in.get(&img_in);
 
-        std::cout << img.str << std::endl;
+        std::cout << img_in.str;
 
-        // Transfer the image from our wrapper type to a host-side working area...
-        memcpy(h_frame, img.mat.data, N*N*sizeof(byte));
-        if (memory_kind == DHM_STANDARD_MEM)
+        // Transfer the image from our wrapper type to the GPU.
+        // ... and transfer it to the GPU.
+        CUDA_CHECK( cudaMemcpy(d_frame, img_in.mat.data, N*N*sizeof(byte), cudaMemcpyHostToDevice) );
+
+        // Perform GPU-side processing.
+        process();
+
+        std::string out_name = output_dir.string() + "/" + fs::path(img_in.str).filename().stem().string();
+
+        // Transfer the depth map from GPU.
+        CUDA_CHECK( cudaMemcpy(h_depth, d_depth, N*N*sizeof(float), cudaMemcpyDeviceToHost) );
+        // ... and to our wrapper type.
+        Image img_out;
+        img_out.mat = cv::Mat(N, N, CV_32F, h_depth);
+        img_out.str = out_name + ".tiff";
+
+        // Write depth map to disk.
+        out.write(img_out);
+
+        std::cout << " -> " << img_out.str;
+
+        // Save volume to disk if requested -- doesn't run in a separate thread since it takes so long.
+        if (do_save_volume)
         {
-            // ... and transfer it to the GPU.
-            CUDA_CHECK( cudaMemcpy(d_frame, h_frame, N*N*sizeof(byte), cudaMemcpyHostToDevice) );
+            fs::path volume_path = fs::path(out_name + "_.tiff");
+
+            cv::Mat mat(N, N, CV_8U);
+            cv::cuda::GpuMat d_mat_norm(N, N, CV_32F);
+            cv::cuda::GpuMat d_mat_byte(N, N, CV_8U);
+
+            TinyTIFFFile* tif = TinyTIFFWriter_open(volume_path.string().c_str(), 8, N, N);
+
+            if (tif)
+            {
+                for (int i = 0; i < num_slices; i++)
+                {
+                    cv::cuda::GpuMat d_mat(N, N, CV_32F, d_volume + i*N*N);
+                    cv::cuda::normalize(d_mat, d_mat_norm, 1.0, 0.0, cv::NORM_MINMAX, -1);
+                    d_mat_norm.convertTo(d_mat_byte, CV_8U, 255.f);
+                    d_mat_byte.download(mat);
+
+                    TinyTIFFWriter_writeImage(tif, mat.data);
+                }
+            }
+            else
+            {
+                DHM_ERROR("Could not write " + volume_path.string());
+            }
+
+            TinyTIFFWriter_close(tif);
+
+            std::cout << ", " << volume_path.string();
         }
 
-        // Call the GPU-side processing routine.
-        process(img.str);
+        std::cout << std::endl;
 
         frame_num++;
     }
 
-    queue.stop();
+    in.stop();
+    out.finish();
 
     is_running = false;
 }
@@ -639,10 +541,10 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
 //}
 
 ////////////////////////////////////////////////////////////////////////////////
-// The actual deconvolution
+// The actual algorithm
 ////////////////////////////////////////////////////////////////////////////////
 
-void DHMProcessor::reconstruct_stack()
+void DHMProcessor::process()
 {
     // start transferring filter quadrants to alternating buffer, for *next* frame
     cudaMemcpy3DParms p = memcpy3d_params;
@@ -682,8 +584,6 @@ void DHMProcessor::reconstruct_stack()
         }
     }
 
-    CUDA_CHECK( cudaStreamSynchronize(0) ); // allow the copy streams to continue in background
-
 
     ////////////////////////////////////////////////////////////////////////////
     // CUSTOM SPATIAL DOMAIN OPS GO HERE
@@ -693,11 +593,18 @@ void DHMProcessor::reconstruct_stack()
     ////////////////////////////////////////////////////////////////////////////
 
 
-    // run the callback ...
-    //callback(d_volume, d_mask, params);
-    //KERNEL_CHECK();
 
-    // sync up the host-side and device-side masks once callback returns
+    // placeholder depth-map operation
+    CUDA_CHECK( cudaMemcpy(d_depth, d_filter[0], N*N*sizeof(float), cudaMemcpyDeviceToDevice) ); // float vs char!?!
+
+
+
+    // placeholder mask generation
+    CUDA_CHECK( cudaMemset(d_mask, 1, num_slices*sizeof(byte)) );
+
+
+
+    // sync up the host-side and device-side masks
     CUDA_CHECK( cudaMemcpy(h_mask, d_mask, num_slices*sizeof(byte), cudaMemcpyDeviceToHost) );
 
     // advance the buffer

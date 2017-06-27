@@ -51,7 +51,7 @@ inline void _CUDA_TIMER(const int state, const char *msg)
         cudaEventDestroy(stop.back());
         start.pop_back();
         stop.pop_back();
-        cudaDeviceSynchronize();
+//        cudaDeviceSynchronize();
     }
 }
 

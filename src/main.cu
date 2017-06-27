@@ -19,19 +19,19 @@ using namespace YipLab;
 // Examples of user-provided callbacks
 ////////////////////////////////////////////////////////////////////////////////
 
-void show_cb(float *d_volume, byte *d_mask, DHMParameters p)
-{
-    for (int k = 0; k < p.num_slices; k++)
-        CUDA_SHOW(d_volume + k*p.N*p.N, p.N, p.N);
-
-    // ... and set the mask
-    CUDA_CHECK( cudaMemset(d_mask, 1, p.num_slices) );
-}
-
-void id_cb(float *d_volume, byte *d_mask, DHMParameters p)
-{
-    CUDA_CHECK( cudaMemset(d_mask, 1, p.num_slices) );
-}
+//void show_cb(float *d_volume, byte *d_mask, DHMParameters p)
+//{
+//    for (int k = 0; k < p.num_slices; k++)
+//        CUDA_SHOW(d_volume + k*p.N*p.N, p.N, p.N);
+//
+//    // ... and set the mask
+//    CUDA_CHECK( cudaMemset(d_mask, 1, p.num_slices) );
+//}
+//
+//void id_cb(float *d_volume, byte *d_mask, DHMParameters p)
+//{
+//    CUDA_CHECK( cudaMemset(d_mask, 1, p.num_slices) );
+//}
 
 //void thr_cb(float *d_volume, byte *d_mask, DHMParameters p)
 //{
@@ -59,12 +59,11 @@ int main(int argc, char* argv[])
     using namespace std;
 
     string input_dir, output_dir;
-    bool save_volume = true;
-    // -1: poll input folder forever
-    // 0: poll input folder only once
-    // nonnegative number: self explanatory
+    bool save_volume;
     int num_slices, max_frames;
     float delta_z, z_init;
+
+    // max_frames toggle not working, out queue not exiting
 
     if (argc < 7)
     {
@@ -73,7 +72,8 @@ int main(int argc, char* argv[])
         z_init = 30.0f;
         delta_z = 1.0f;
         num_slices = 100;
-        max_frames = -1;
+        max_frames = 20;
+        save_volume = false;
     }
     else
     {
@@ -83,6 +83,7 @@ int main(int argc, char* argv[])
         delta_z = stof(string(argv[4]));
         num_slices = stoi(string(argv[5]));
         max_frames = stoi(string(argv[6]));
+        save_volume = stoi(string(argv[7]));
     }
 
     float delta_x = 0.0051992f; // (5.32f / 1024.f);

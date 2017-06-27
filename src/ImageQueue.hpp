@@ -102,6 +102,27 @@ private:
     std::thread _thread;
     std::atomic<int> _stop;
     std::exception_ptr _ex = nullptr;
+    std::mutex _mutex;
+
+    const static int MAX_N_TRIES = 30;
+};
+
+class ImageWriter
+{
+public:
+    ImageWriter(const fs::path, const int);
+    void run();
+    void write(const Image);
+    void finish();
+    ~ImageWriter();
+
+private:
+    fs::path output_path;
+    BoundedBuffer<Image> *_queue = nullptr;
+    std::thread _thread;
+    std::atomic<int> _stop;
+    std::exception_ptr _ex = nullptr;
+    std::mutex _mutex;
 
     const static int MAX_N_TRIES = 30;
 };

@@ -9,7 +9,7 @@
 
 #include "DHMCommon.cuh"
 //#include "UEyeCamera/UEyeCamera.hpp"
-#include "ImageReader.hpp"
+#include "ImageQueue.hpp"
 
 namespace YipLab {
 
@@ -21,7 +21,6 @@ __global__ void _gen_filter_slice(complex*, const float, const DHMParameters);
 __global__ void _quad_mul(complex*, const complex*, const byte*, const DHMParameters);
 
 // misc helper stuff
-std::vector<fs::path> iter_folder(fs::path, std::string = "");
 fs::path check_dir(fs::path);
 
 class DHMProcessor
@@ -51,23 +50,13 @@ private:
     void ifft_stack(complex *, const byte *);
     void mod_stack(const complex *, float *, const byte *);
 
-//    void ueye_callback();
-    void process(fs::path);
-    void load_image(fs::path);
-    void save_image(fs::path);
-    void reconstruct_stack();
-    void save_depth(fs::path);
-    void save_volume(fs::path);
-
-    void display_image(byte *);
-    void display_volume(float *, bool);
+    void process();
 
     // experimental parameters
     int num_slices;
     float delta_z;
     float z_init;
     DHMMemoryKind memory_kind; // presently this doesn't do that much
-    bool do_save_volume;
     fs::path output_dir;
 
     // internal parameters
@@ -80,7 +69,7 @@ private:
     static const int QUEUE_SIZE = 16;
 
     // CUDA handles
-    byte *h_frame, *h_mask, *d_frame, *d_mask;
+    byte *h_mask, *d_frame, *d_mask;
     complex *h_filter, *d_image;
     complex *d_filter[N_BUF]; // multiple buffering
     float *d_volume, *d_depth;
