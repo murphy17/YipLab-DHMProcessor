@@ -25,7 +25,8 @@
 //#include "inotify.h"
 //#include "FileSystemEvent.h"
 #include "strnatcmp/strnatcmp.h"
-#include "TinyTIFF/tinytiffreader.h"
+//#include "TinyTIFF/tinytiffreader.h"
+#include "TinyTIFF/tinytiffwriter.h"
 
 namespace YipLab {
 
@@ -91,11 +92,18 @@ public:
         m_not_full.notify_one();
     }
 
+    bool is_empty() {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        bool empty = m_unread == 0;
+        lock.unlock();
+        return empty;
+    }
+
     bool is_stopped() {
         std::unique_lock<std::mutex> lock(m_mutex);
-        bool stopped = m_stop;
+        bool stop = m_stop;
         lock.unlock();
-        return stopped;
+        return stop;
     }
 
 //    void clear() {

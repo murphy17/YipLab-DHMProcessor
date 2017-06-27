@@ -138,8 +138,27 @@ void ImageWriter::start()
 
                 if ( _queue->pop_back(&img) )
                 {
-                    // for simplicity's sake, just using OpenCV write; single TIFF not speed issue
-                    cv::imwrite(img.str, img.mat);
+                    // have to use TinyTIFF here! OpenCV C++ doesn't support FP32 TIFF
+                    int bit_depth;
+                    switch (img.mat.type())
+                    {
+                        case CV_8U:  bit_depth = 8;  break;
+                        case CV_16U: bit_depth = 16; break;
+                        case CV_32F: bit_depth = 32; break;
+                    }
+
+                    TinyTIFFFile* tif = TinyTIFFWriter_open(img.str.c_str(), bit_depth, img.mat.rows, img.mat.cols);
+
+                    if (tif)
+                    {
+                        TinyTIFFWriter_writeImage(tif, img.mat.data);
+                    }
+                    else // no exception handling in TinyTIFF
+                    {
+                        throw std::runtime_error("TIFF write error");
+                    }
+
+                    TinyTIFFWriter_close(tif);
                 }
                 else // pop_back returns false if stop command has been triggered
                 {
@@ -170,6 +189,11 @@ void ImageWriter::finish()
     if (_ex) std::rethrow_exception(_ex);
     l.unlock();
 
+    // this is a bad solution, but it works -- spin-lock until all images consumed
+    while ( !_queue->is_empty() )
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
     _queue->stop();
 }
 

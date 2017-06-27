@@ -529,7 +529,7 @@ void DHMProcessor::process_folder(fs::path input_dir, fs::path output_dir, bool 
     }
 
     in.finish();
-    out.finish();
+    out.finish(); // TODO: this is not correct!!! have to wait until queue is empty!!!
 
     is_running = false;
 }
@@ -594,8 +594,8 @@ void DHMProcessor::process()
 
 
 
-    // placeholder depth-map operation
-    CUDA_CHECK( cudaMemcpy(d_depth, d_filter[0], N*N*sizeof(float), cudaMemcpyDeviceToDevice) ); // float vs char!?!
+    // placeholder depth-map operation (just first slice)
+    CUDA_CHECK( cudaMemcpy(d_depth, &d_volume[0], N*N*sizeof(float), cudaMemcpyDeviceToDevice) );
 
 
 
