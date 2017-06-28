@@ -579,6 +579,8 @@ void DHMProcessor::process()
 
 
     // sync up the host-side and device-side masks
+    // note: I first tried to used to use "managed memory" to do this,
+    // but CPU and GPU crash when they read the same managed memory simultaneously
     CUDA_CHECK( cudaMemcpy(h_mask, d_mask, num_slices*sizeof(byte), cudaMemcpyDeviceToHost) );
 
     // advance the buffer
