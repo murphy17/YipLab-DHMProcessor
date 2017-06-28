@@ -34,7 +34,8 @@ void ImageReader::start()
                 // I think the iterator has problems with folder being modified
                 for (auto &i : boost::make_iterator_range(fs::directory_iterator(input_path), {})) {
                     fs::path this_path = i.path();
-                    bool is_new = std::atoi(this_path.stem().c_str()) > latest_frame;
+                    // bool is_new = std::atoi(this_path.stem().c_str()) > latest_frame;
+                    bool is_new = strnatcmp(this_path.stem().c_str(), latest_name.c_str()) > 0;
                     bool is_valid = this_path.stem().string()[0] != '.';
                     bool is_tiff = this_path.extension() == ".tif" || this_path.extension() == ".tiff";
                     if (is_new && is_valid && is_tiff)
@@ -57,6 +58,8 @@ void ImageReader::start()
                         int num_tries = 0;
                         bool f_exists = true;
 
+                        // try to load the image, give up after a few failures
+                        // (reason: file can appear before it's done being written to)
                         do {
                             f_exists &= fs::exists(p); // make sure file hasn't subsequently vanished
                             if (!f_exists) break;
@@ -75,7 +78,8 @@ void ImageReader::start()
                             // push to image queue; will sleep if full, return false if queue stopped
                             if ( !_queue->push_front(img) ) break;
 
-                            latest_frame = std::atoi(p.stem().c_str());
+                            //latest_frame = std::atoi(p.stem().c_str());
+                            latest_name = p.stem();
                         }
                     }
                 }

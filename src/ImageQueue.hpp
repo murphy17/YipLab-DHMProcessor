@@ -5,27 +5,19 @@
 
 #include <boost/circular_buffer.hpp>
 #include <boost/call_traits.hpp>
-#include <boost/lockfree/spsc_queue.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/range/iterator_range.hpp>
 
 #include <string>
 #include <iostream>
-#include <atomic>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
 #include <algorithm>
-#include <functional>
-#include <deque>
 #include <chrono>
 #include <exception>
-#include <unordered_set>
 
-//#include "inotify.h"
-//#include "FileSystemEvent.h"
 #include "strnatcmp/strnatcmp.h"
-//#include "TinyTIFF/tinytiffreader.h"
 #include "TinyTIFF/tinytiffwriter.h"
 
 namespace YipLab {
@@ -134,10 +126,10 @@ public:
 
 private:
     fs::path input_path;
-    int latest_frame;
+    //int latest_frame;
+    std::string latest_name;
     BoundedBuffer<Image> *_queue = nullptr;
     std::thread _thread;
-    std::atomic<int> _stop;
     std::exception_ptr _ex = nullptr;
     std::mutex _mutex;
 
