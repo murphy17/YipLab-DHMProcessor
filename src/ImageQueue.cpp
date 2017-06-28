@@ -10,7 +10,7 @@ ImageReader::ImageReader(const fs::path input_path, const int buffer_size)
     this->input_path = input_path;
 
     _queue = new BoundedBuffer<Image>(buffer_size);
-    this->latest_frame = -1;
+    this->latest_name = "";
 }
 
 void ImageReader::start()
@@ -35,7 +35,7 @@ void ImageReader::start()
                 for (auto &i : boost::make_iterator_range(fs::directory_iterator(input_path), {})) {
                     fs::path this_path = i.path();
                     // bool is_new = std::atoi(this_path.stem().c_str()) > latest_frame;
-                    bool is_new = strnatcmp(this_path.stem().c_str(), latest_name.c_str()) > 0;
+                    bool is_new = latest_name == "" || strnatcmp(this_path.stem().c_str(), latest_name.c_str()) > 0;
                     bool is_valid = this_path.stem().string()[0] != '.';
                     bool is_tiff = this_path.extension() == ".tif" || this_path.extension() == ".tiff";
                     if (is_new && is_valid && is_tiff)
@@ -79,7 +79,7 @@ void ImageReader::start()
                             if ( !_queue->push_front(img) ) break;
 
                             //latest_frame = std::atoi(p.stem().c_str());
-                            latest_name = p.stem();
+                            latest_name = p.stem().string();
                         }
                     }
                 }
